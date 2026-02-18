@@ -41,6 +41,12 @@ module load gcc/13.3.0
 module load cuda/12.4.0
 ```
 
+### Start the vLLM server (on a compute node with GPU)
+```
+uv run vllm serve Qwen/Qwen3-VL-8B-Instruct --port 8001 --max-model-len 16384 --gpu-memory-utilization 0.85
+```
+The pipeline judges (`ChitChatJudge`, `AnthropomorphicJudge`) default to `http://localhost:8001/v1` via the `VLLM_PORT` env var (default `8001`).
+
 ### Run tests
 ```
 uv run pytest
