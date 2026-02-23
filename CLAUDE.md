@@ -38,7 +38,7 @@ Array jobs set `SLURM_ARRAY_TASK_ID` env var; experiments can read it via `os.en
 ```
 module purge
 module load gcc/13.3.0
-module load cuda/12.4.0
+module load cuda/12.6.3   # must be 12.6.3 — .venv was built with torch+cu126
 ```
 
 ### Start the vLLM server (on a compute node with GPU)
@@ -47,20 +47,57 @@ uv run vllm serve Qwen/Qwen3-VL-8B-Instruct --port 8001 --max-model-len 16384 --
 ```
 The pipeline judges (`ChitChatJudge`, `AnthropomorphicJudge`) default to `http://localhost:8001/v1` via the `VLLM_PORT` env var (default `8001`).
 
+### Run the WildChat pipeline (two stages)
+
+Each stage has a dedicated sbatch script. Always submit from the project root.
+
+**Stage 1 — Chit-Chat Filter:**
+```bash
+# Download WildChat once (CPU job, no GPU)
+sbatch experiments/01_chit_chat_filter/run_download.sbatch
+
+# Filter for chit-chat (6-shard GPU array)
+sbatch experiments/01_chit_chat_filter/run_chit_chat.sbatch
+
+# After all shards complete, concatenate:
+cat data/wildchat_chit_chat_part_*.jsonl > data/wildchat_chit_chat.jsonl
+```
+
+**Stage 2 — Anthropomorphic Judge:**
+```bash
+# Score conversations (6-shard GPU array)
+sbatch experiments/02_anthropomorphic_judge/run_anthropomorphic.sbatch
+
+# After all shards complete, concatenate:
+cat data/wildchat_scores_part_*.jsonl > data/wildchat_scores.jsonl
+```
+
+**Key sbatch design patterns (used in all pipeline scripts):**
+- Port: `VLLM_PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()")` — OS-assigned free port, avoids conflicts
+- TMPDIR: `job_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}` — per-task to avoid torch inductor cache collisions on shared NFS
+- `SLURM_ARRAY_TASK_COUNT` is set automatically by SLURM when using `--array=0-5` (no manual export needed)
+- Checkpoint/resumption: judges skip rows already in the output file (`conversation_hash` key); safe to resubmit failed shards
+
 ### Run tests
 ```
 uv run pytest
 ```
 
 ## Project Layout
+- `src/pipeline/` — LLM-as-a-judge pipeline: `judge.py` (base), `chit_chat.py`, `anthropomorphic.py`
 - `src/allegro/` — shared library code (reusable modules with argparse)
-- `experiments/` — numbered experiment folders (00_xxx/, 01_xxx/, ...) each with `run.py`, `results/`, `logs/`, `figures/`
+- `experiments/` — numbered experiment folders (01_xxx/, 02_xxx/, ...) each with `run.py`, `results/`, `logs/`, `figures/`
+  - `01_chit_chat_filter/` — Stage 1: download WildChat + chit-chat LLM filter
+  - `02_anthropomorphic_judge/` — Stage 2: anthropomorphism scoring
+  - `03_openrouter_eval/` — evaluate seed prompts via OpenRouter API
 - `data/` — datasets (gitignored)
-- `slurm/` — SLURM job templates
+- `slurm/` — generic SLURM job templates (for simple single-script jobs)
 - `tests/` — pytest tests
+- `depreciated/` — old monolithic pipeline scripts (reference only, do not edit)
 
 ## Conventions
-- Experiments: numbered folders in `experiments/` (00_xxx/, 01_xxx/, ...) each with a `run.py`. Create new folders, don't edit old ones.
+- Experiments: numbered folders in `experiments/` (01_xxx/, 02_xxx/, ...) each with a `run.py`. Create new folders, don't edit old ones.
+- Pipeline stages with vLLM use experiment-local sbatch scripts (not the generic `slurm/` templates), because they need vLLM startup/teardown logic.
 - Each experiment folder should have a `README.md` with detailed setup, results, and observations. The top-level `experiments/README.md` should only contain brief descriptions of each experiment.
 - Reusable code goes in `src/allegro/` with argparse for flexibility
 - Tracking: wandb (disable with `WANDB_MODE=disabled`)

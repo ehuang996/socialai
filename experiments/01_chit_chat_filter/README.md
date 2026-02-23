@@ -1,53 +1,51 @@
-# 01 — Chit-Chat Filter
+# 03 — Chit-Chat Filter
 
-Filter WildChat-1M conversations to identify chit-chat using LLM-as-a-judge (Qwen3-VL-8B via vLLM).
+**Status:** Active
+**Goal:** Filter WildChat-1M for casual chit-chat conversations using an LLM-as-a-judge (ChitChatJudge, prompt v5).
 
-## Steps
+## Pipeline
 
-1. **Preprocess**: Download WildChat, filter to English, deduplicate → `results/wildchat_en.jsonl`
-2. **Judge**: Run ChitChatJudge on each conversation's first user message → `results/chit_chat_labels_part_N.jsonl`
+### Step 0: Download & Preprocess (once)
 
-## Usage
+Downloads `allenai/WildChat-1M` from the shared HuggingFace cache, keeps only English conversations, deduplicates by `conversation_hash`, and writes `data/wildchat_raw.jsonl`.
 
 ```bash
-# Preprocess (CPU, one-time)
-uv run python experiments/01_chit_chat_filter/run.py --preprocess
-
-# Judge (needs vLLM server on GPU)
-# Start vLLM server first (--max-model-len is required for this model):
-python -m vllm.entrypoints.openai.api_server \
-  --model Qwen/Qwen3-VL-8B-Instruct \
-  --port ${VLLM_PORT:-8001} \
-  --dtype auto \
-  --trust-remote-code \
-  --max-model-len 16384
-uv run python experiments/01_chit_chat_filter/run.py --judge
-
-# SLURM array (5 shards)
-sbatch --array=0-4 slurm/run_gpu.sbatch experiments/01_chit_chat_filter/run.py --judge
+sbatch experiments/01_chit_chat_filter/run_download.sbatch
 ```
 
-## Output Schema
+Monitor: `squeue -u $USER`
+Expected output: `data/wildchat_raw.jsonl` (~500k–700k rows)
 
-Each line in the output JSONL:
-```json
-{"conversation_hash": "...", "keep": true, "reasoning": "...", "raw_response": "...", "model": "...", "judge_type": "chit_chat"}
+### Step 1: Chit-Chat Filter (6-shard array job)
+
+Runs `ChitChatJudge` with prompt v5 on `wildchat_raw.jsonl` across 6 parallel SLURM tasks. Only rows where the judge returns `keep=true` are written.
+
+```bash
+sbatch --array=0-5 experiments/01_chit_chat_filter/run_chit_chat.sbatch
 ```
 
-## Results (200-example pilot)
+Monitor: `squeue -u $USER`
+Outputs: `data/wildchat_chit_chat_part_{0..5}.jsonl`
 
-- **200** English deduplicated conversations from WildChat-1M
-- **9 skipped** by `format_conversation` (first user message < 5 characters)
-- **191 judged**, 0 parse errors
+### Step 2: Concatenate Shards
 
-| Label | Count | % |
-| --- | --- | --- |
-| Chit-chat (`keep=true`) | 18 | 9.4% |
-| Not chit-chat (`keep=false`) | 173 | 90.6% |
+After all 6 array tasks complete:
 
-### Observations
+```bash
+cat data/wildchat_chit_chat_part_*.jsonl > data/wildchat_chit_chat.jsonl
+wc -l data/wildchat_chit_chat.jsonl
+```
 
-- The vast majority (~91%) of WildChat conversations are task-oriented (coding, writing, factual Q&A), not chit-chat. This is consistent with WildChat being drawn from ChatGPT users who typically have a goal in mind.
-- Chit-chat examples are mostly simple greetings ("Hi", "Hello there", "How are you?") with no follow-up task.
-- The judge produces structured JSON reliably — 0/191 parse failures with `temperature=0`.
-- The 9 skipped rows had trivially short first messages (< 5 chars), which is a reasonable filter to avoid ambiguous single-token inputs.
+This combined file is the input for experiment 04.
+
+## Resources
+
+- GPU: 1× A6000 per shard
+- Partition: `nlp_hiprio`
+- Memory: 40G per shard
+- vLLM model: `Qwen/Qwen3-VL-8B-Instruct`
+- Concurrency: 100 async workers per shard
+
+## Results
+
+(To be filled after run)

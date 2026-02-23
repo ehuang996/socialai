@@ -1,36 +1,63 @@
-# 02 — Anthropomorphic Behavior Judge
+# 04 — Anthropomorphic Judge
 
-Detect anthropomorphic behavior in WildChat chit-chat conversations using LLM-as-a-judge.
+**Status:** Active
+**Goal:** Detect anthropomorphic AI behavior in chit-chat conversations filtered by experiment 03.
 
 ## Prerequisites
 
-Run experiment 01 first to produce chit-chat labels.
-
-## Steps
-
-1. **Prepare**: Merge exp 01 labels with original data → `results/chit_chat_conversations.jsonl`
-2. **Judge**: Run AnthropomorphicJudge → `results/anthropomorphic_labels_part_N.jsonl`
-
-## Usage
+`data/wildchat_chit_chat.jsonl` must exist. Generate it by running experiment 03 and concatenating the shards:
 
 ```bash
-# Prepare input (CPU)
-uv run python experiments/02_anthropomorphic_judge/run.py --prepare
-
-# Judge first turn only (default)
-uv run python experiments/02_anthropomorphic_judge/run.py --judge
-
-# Judge full conversation
-uv run python experiments/02_anthropomorphic_judge/run.py --judge --all_turns
-
-# SLURM array
-sbatch --array=0-4 slurm/run_gpu.sbatch experiments/02_anthropomorphic_judge/run.py --judge
+cat data/wildchat_chit_chat_part_*.jsonl > data/wildchat_chit_chat.jsonl
 ```
 
-## Output Schema
+## Pipeline
+
+### Step 1: Run the Judge (6-shard array job)
+
+```bash
+sbatch --array=0-5 experiments/02_anthropomorphic_judge/run_anthropomorphic.sbatch
+```
+
+Monitor: `squeue -u $USER`
+Outputs: `data/wildchat_scores_part_{0..5}.jsonl`
+
+### Step 2: Concatenate Shards
+
+After all 6 array tasks complete:
+
+```bash
+cat data/wildchat_scores_part_*.jsonl > data/wildchat_scores.jsonl
+wc -l data/wildchat_scores.jsonl
+```
+
+## Output Format
+
+Each line in the output JSONL (old-format for compatibility):
 
 ```json
-{"conversation_hash": "...", "anthropomorphic": true, "reasoning": "...", "categories": [1, 5], "raw_response": "...", "model": "...", "judge_type": "anthropomorphic"}
+{
+  "hash": "<conversation_hash>",
+  "user_input": "<first user turn>",
+  "assistant_response": "<first assistant turn>",
+  "timestamp": "<ISO timestamp>",
+  "speaker_reasoning": "...",
+  "actual_speaker": "chatbot or persona name",
+  "anthropomorphism_reasoning": "...",
+  "anthropomorphic_score": -1 | 0 | 1
+}
 ```
 
-Categories: 1=emotions, 2=experiences, 3=physical, 4=identity, 5=relationships, 6=consciousness, 7=first-person narratives
+Scores: `-1` = robotic/transparent, `0` = neutral, `1` = human-simulating.
+
+## Resources
+
+- GPU: 1× A6000 per shard
+- Partition: `nlp_hiprio`
+- Memory: 40G per shard
+- vLLM model: `Qwen/Qwen3-VL-8B-Instruct`
+- Concurrency: 64 async workers per shard
+
+## Results
+
+(To be filled after run)

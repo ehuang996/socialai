@@ -1,10 +1,11 @@
 """Chit-chat filter judge: classifies whether a conversation is casual chit-chat."""
 
+import argparse
 import asyncio
 import json
 from pathlib import Path
 from openai import AsyncOpenAI
-from pipeline.judge import Judge
+from pipeline.judge import Judge, JudgeConfig
 
 
 def load_prompts(prompts_file: str = "prompts/chit_chat_prompts.json") -> dict:
@@ -82,6 +83,20 @@ class ChitChatJudge(Judge):
             default='v1',
             help='Version of the prompt to use (e.g., v1, v2)',
         )
+
+
+    @classmethod
+    def from_args(cls, args: argparse.Namespace) -> "ChitChatJudge":
+        config = JudgeConfig(
+            model_name=args.model_name,
+            api_url=args.api_url,
+            input_path=args.input_path,
+            output_path=args.output_path,
+            concurrency_limit=args.concurrency_limit,
+            max_tokens=args.max_tokens,
+            temperature=args.temperature,
+        )
+        return cls(config, prompt_version=args.prompt_version)
 
 
 if __name__ == "__main__":
