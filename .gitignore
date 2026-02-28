@@ -21,6 +21,7 @@ outputs/
 cache/
 slurm_logs/
 wandb/
+logs/
 
 # Experiment outputs (results/logs/figures inside experiment folders)
 experiments/*/results/
