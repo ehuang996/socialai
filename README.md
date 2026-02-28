@@ -1,148 +1,170 @@
 # socialai
 
-Studying anthropomorphic behavior in LLMs. We filter and analyze large-scale conversation datasets (WildChat) using LLM-as-a-judge pipelines to identify when AI assistants present themselves as having human-like qualities.
+Studying social behavior in LLMs. We filter and analyze large-scale conversation datasets (WildChat-1M) using LLM-as-a-judge pipelines to identify when AI assistants exhibit specific behaviors (e.g., anthropomorphism, sycophancy).
 
 ## Setup
 
 ```bash
-bash install_uv.sh   # if uv not installed
+bash install_uv.sh   # if uv is not yet installed
 uv sync
 ```
 
+Requires Python ≥ 3.11 (managed by uv). The virtual env is at `.venv/`.
+
 ## Pipeline Overview
 
-The pipeline runs in three stages on the WildChat-1M dataset. Each stage corresponds to a Python file inside the measure folder (e.g., `src/measure/anthropomorphism/`):
+Each measure runs three sequential stages on the WildChat-1M dataset:
 
-**Stage 1 — Chit-Chat Filter** (`chit_chat.py` + `filter1.json`)
-- Downloads WildChat-1M from HuggingFace, filters English, deduplicates
-- LLM judge keeps only casual chit-chat conversations
-- Input: HuggingFace → Output: `data/wildchat_chit_chat.jsonl`
+| Stage | Name | Judge | Input → Output |
+|-------|------|-------|----------------|
+| 1 | `coarse_filter` | vLLM (local) | raw JSONL → chit-chat conversations |
+| 2 | `low_quality_filter` | vLLM (local) | chit-chat JSONL → scored conversations |
+| 3 | `high_quality_filter` | OpenRouter API | seed CSV → frontier model responses |
 
-**Stage 2 — Low-Quality / Domain Judge** (`anthropomorphic.py` or `low_quality_filter.py` + `filter2.json`)
-- Scores each conversation on the measure-specific dimension (-1 / 0 / 1)
-- For anthropomorphism: detects human-like identity/emotion claims
-- Input: `data/wildchat_chit_chat.jsonl` → Output: `data/wildchat_scores.jsonl`
+**Stage 1 — Coarse Filter** (`filter1.json`)
+Keeps only casual chit-chat conversations from WildChat. Uses a versioned prompt from `filter1.json` (default `v4`). Passes only the first user message to the judge; outputs rows where `keep=true`.
 
-**Stage 3 — High-Quality Filter** (`high_quality_filter.py` + `filter3.json`)
-- Evaluates a curated seed set against frontier models via OpenRouter API
-- Input: seed CSV → Output: model responses CSV + JSONL files
+**Stage 2 — Low-Quality Filter** (`filter2.json`)
+Scores each conversation on the measure-specific dimension. Passes the first user + assistant turn to the judge; outputs a score and reasoning per row.
+
+**Stage 3 — High-Quality Filter** (`filter3.json`)
+Evaluates a curated seed CSV against multiple frontier models via the OpenRouter API. Outputs per-model responses as a CSV and individual JSONL files. Supports checkpointing (safe to rerun).
 
 ## Running the Pipeline
 
-All stages are run via the central `src/run.py` dispatcher. Always run from the **project root**.
+All stages are submitted via `pipeline.sh` from the **project root**. Each run auto-creates a new `experiments/<NN>_<stage>/` folder with logs, results, and a source snapshot.
 
-### Step 1: Download & preprocess WildChat (once, no GPU)
+### Step 0 — Download WildChat (once, CPU job)
 
 ```bash
-sbatch experiments/01_chit_chat_filter/run_download.sbatch
-# Check: wc -l data/wildchat_raw.jsonl
+sbatch slurm/run_download.sbatch
+# Output: data/wildchat_raw.jsonl
 ```
 
-### Step 2: Chit-chat filter (6-shard GPU array)
+### Step 1 — Coarse filter
 
 ```bash
-sbatch experiments/01_chit_chat_filter/run_chit_chat.sbatch
-# Monitor: squeue --me
-# After all 6 shards complete:
-cat data/wildchat_chit_chat_part_*.jsonl > data/wildchat_chit_chat.jsonl
+bash pipeline.sh --measure anthropomorphism --stage coarse_filter
+# Default input: data/wildchat_raw.jsonl
+# Output: experiments/<NN>_coarse_filter/results/anthropomorphism_coarse.jsonl
 ```
 
-### Step 3: Anthropomorphic judge (6-shard GPU array)
+### Step 2 — Low-quality filter
 
 ```bash
-sbatch experiments/02_anthropomorphic_judge/run_anthropomorphic.sbatch
-# After all 6 shards complete:
-cat data/wildchat_scores_part_*.jsonl > data/wildchat_scores.jsonl
+bash pipeline.sh --measure anthropomorphism --stage low_quality_filter \
+    --input experiments/<NN>_coarse_filter/results/anthropomorphism_coarse.jsonl
+# Output: experiments/<NN>_low_quality_filter/results/anthropomorphism_scores.jsonl
 ```
 
-### Step 4: High-quality filter (OpenRouter API)
+### Step 3 — High-quality filter (OpenRouter API)
 
 ```bash
-uv run python src/run.py \
-    --measure anthropomorphism \
-    --stage high_quality_filter \
+bash pipeline.sh --measure anthropomorphism --stage high_quality_filter \
     --input <seed_set.csv> \
-    --output experiments/03_openrouter_eval/results/raw.csv \
+    --key <path/to/openrouter_api_key>
+# Output: experiments/<NN>_high_quality_filter/results/anthropomorphism_high_quality.csv
+```
+
+### Pipeline options
+
+```
+bash pipeline.sh --measure <name> --stage <stage> [options]
+
+Options:
+  --shards N    Number of SLURM array shards for vLLM stages (default: 6)
+  --input  path Input file (required for stages 2 & 3; defaults to wildchat_raw.jsonl for stage 1)
+  --key    path OpenRouter API key file (required for stage 3)
+  --exclude N   Comma-separated SLURM node exclusions (optional)
+```
+
+### Running a stage directly (without SLURM)
+
+On a GPU node with a running vLLM server:
+
+```bash
+# Start the vLLM server
+uv run vllm serve Qwen/Qwen3-VL-8B-Instruct \
+    --port 8001 --max-model-len 16384 --gpu-memory-utilization 0.85
+
+# Stage 1
+uv run python src/run.py \
+    --measure anthropomorphism --stage coarse_filter \
+    --input_path data/wildchat_raw.jsonl \
+    --output_path data/anthropomorphism_coarse.jsonl \
+    --prompt-version v4
+
+# Stage 2
+uv run python src/run.py \
+    --measure anthropomorphism --stage low_quality_filter \
+    --input_path data/anthropomorphism_coarse.jsonl \
+    --output_path data/anthropomorphism_scores.jsonl
+
+# Stage 3
+uv run python src/run.py \
+    --measure anthropomorphism --stage high_quality_filter \
+    --input <seed_set.csv> \
+    --output results/raw.csv \
     --key <path/to/openrouter_api_key>
 ```
 
-### SLURM scripts
-
-| Script | Stage | Resources |
-|--------|-------|-----------|
-| `experiments/01_chit_chat_filter/run_download.sbatch` | Download (once) | CPU only, 40G, 4h |
-| `experiments/01_chit_chat_filter/run_chit_chat.sbatch` | Stage 1 (array 0-5) | 1 GPU, 40G, 2d |
-| `experiments/02_anthropomorphic_judge/run_anthropomorphic.sbatch` | Stage 2 (array 0-5) | 1 GPU, 40G, 2d |
-
-### Direct CLI usage (without SLURM)
-
-All stages can be run directly via `src/run.py` on any node with a running vLLM server:
-
-```bash
-# Start vLLM server on a GPU node
-uv run vllm serve Qwen/Qwen3-VL-8B-Instruct --port 8001 --max-model-len 16384 --gpu-memory-utilization 0.85
-
-# Stage 1: chit-chat filter
-uv run python src/run.py \
-    --measure anthropomorphism \
-    --stage chit_chat \
-    --input_path data/wildchat_raw.jsonl \
-    --output_path data/wildchat_chit_chat.jsonl \
-    --prompt-version v4
-
-# Stage 2: anthropomorphic judge
-uv run python src/run.py \
-    --measure anthropomorphism \
-    --stage anthropomorphic \
-    --input_path data/wildchat_chit_chat.jsonl \
-    --output_path data/wildchat_scores.jsonl
-```
+The `VLLM_PORT` env var controls which port the judges connect to (default `8001`).
 
 ## Adding a New Measure
 
-To apply the pipeline to a new research question, create a folder under `src/measure/`:
+Create a folder under `src/measure/` with three JSON config files — no Python files needed:
 
 ```
 src/measure/<your_measure>/
-├── filter1.json          # versioned chit-chat filter prompts {"v1": "...", ...}
-├── filter2.json          # {"prompt": "<your domain judge prompt>"}
-├── filter3.json          # {"system_prompt": "", "models": {...}}
-├── chit_chat.py          # Stage 1 judge (copy from an existing measure)
-├── low_quality_filter.py # Stage 2 judge (implement for your domain)
-└── high_quality_filter.py # Stage 3 OpenRouter judge (copy from an existing measure)
+├── filter1.json   # {"v1": "<system prompt>", "v4": "<system prompt>", ...}
+├── filter2.json   # {"prompt": "<system prompt for domain judge>"}
+└── filter3.json   # {"system_prompt": "...", "models": {"col_name": "openrouter/model-id", ...}}
 ```
 
-Then run:
+The base implementations in `src/measure/base/` handle everything automatically. Then run:
+
 ```bash
-uv run python src/run.py --measure <your_measure> --stage chit_chat --input_path ... --output_path ...
+bash pipeline.sh --measure <your_measure> --stage coarse_filter
 ```
 
 ## Project Structure
 
-```text
+```
 src/
-  run.py             # unified entry point: --measure, --stage dispatch
-  utils.py           # Judge base class, JudgeConfig, async inference
-  param.py           # shared argparse definitions
+  run.py             # unified entry point: --measure / --stage dispatch
+  utils.py           # Judge base class, JudgeConfig, async vLLM inference
+  param.py           # shared argparse definitions (add_judge_args)
   measure/
-    anthropomorphism/  # filter1.json, filter2.json, filter3.json, chit_chat.py, anthropomorphic.py, high_quality_filter.py
-    sycophancy/        # same structure with sycophancy-specific prompts
+    base/            # generic stage implementations (coarse_filter, low_quality_filter, high_quality_filter)
+    anthropomorphism/  # filter1.json, filter2.json, filter3.json
+    sycophancy/        # filter1.json, filter2.json, filter3.json
   mode/
-    single_turn.py   # format_single_turn() utility for WildChat
+    single_turn.py   # format_single_turn() for WildChat rows
     multi_turn.py    # stub for future multi-turn support
   allegro/           # shared library code
-experiments/         # numbered experiment folders (sbatch scripts, results, logs)
-  01_chit_chat_filter/
-  02_anthropomorphic_judge/
-  03_openrouter_eval/
-slurm/               # generic SLURM job templates
+scripts/
+  download.py        # downloads WildChat-1M from HuggingFace
+slurm/
+  run_download.sbatch    # CPU job for data download
+  run_vllm_stage.sbatch  # GPU array job template (used by pipeline.sh for stages 1 & 2)
+experiments/         # auto-created by pipeline.sh; one numbered folder per stage run
 data/                # datasets (gitignored)
 tests/               # pytest tests
-depreciated/         # old monolithic pipeline scripts (reference only)
+depreciated/         # old monolithic scripts (reference only, do not edit)
 ```
 
-## Run Tests
+## Tests
 
 ```bash
 uv run python -m pytest --extra dev
 ```
+
+## Cluster Notes (USC CARC)
+
+- **Partitions:** `nlp_hiprio` (no preemption) and `nlp` (preemptable)
+- **Account:** `robinjia_875`
+- **Default resources per job:** 8 CPUs, 1 GPU, 40G RAM
+- **Required modules:** `gcc/13.3.0` and `cuda/12.6.3` (already in sbatch templates)
+- **vLLM model:** `Qwen/Qwen3-VL-8B-Instruct` (built with torch+cu126)
+- Each SLURM array task gets an OS-assigned free port (`VLLM_PORT`) and a per-task `TMPDIR` to avoid cache collisions on shared NFS
+- Judges skip rows already in the output file (`conversation_hash` key) — safe to resubmit failed shards
