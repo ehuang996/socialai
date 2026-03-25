@@ -24,6 +24,7 @@ export TMPDIR=/project2/robinjia_875/wangzhu/eric_huang/.cache/tmp
 mkdir -p $TMPDIR
 
 uv run python scripts/download.py \
+    --dataset_name "allenai/WildChat-4.8M" \
     --output_path data/wildchat_raw.jsonl
 
 echo "Download complete."

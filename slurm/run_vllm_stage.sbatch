@@ -8,7 +8,7 @@
 #   INPUT_PATH     — input JSONL path
 #   OUTPUT_BASE    — output path prefix (e.g., data/anthropomorphism_coarse)
 #                    actual output = ${OUTPUT_BASE}_part_${SLURM_ARRAY_TASK_ID}.jsonl
-#   EXTRA_ARGS     — additional flags passed to src/run.py (space-separated)
+#   EXTRA_ARGS     — additional flags passed to src/filter/run.py (space-separated)
 #   EXPERIMENT_DIR — if non-empty, shard 0 snapshots src/ into <EXPERIMENT_DIR>/src/
 #
 # --job-name, --array, --output, --error are set by pipeline.sh on the command line.
@@ -18,7 +18,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=40G
+#SBATCH --mem=128G
 #SBATCH --gres=gpu:1
 #SBATCH --time=2-00:00:00
 
@@ -56,7 +56,7 @@ if [ $? -ne 0 ]; then
 fi
 echo "vLLM server ready."
 
-uv run python src/run.py \
+uv run python src/filter/run.py \
     --measure ${MEASURE} \
     --stage ${STAGE} \
     ${EXPERIMENT_DIR:+--experiment_dir ${EXPERIMENT_DIR}} \

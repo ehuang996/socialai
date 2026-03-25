@@ -35,7 +35,7 @@ done
 
 if [ -z "$MEASURE" ] || [ -z "$STAGE" ]; then
     echo "Usage: bash pipeline.sh --measure <name> --stage <stage> [options]"
-    echo "Stages: coarse_filter, low_quality_filter, high_quality_filter"
+    echo "Stages: coarse_filter, low_quality_filter, high_quality_filter, final_filter"
     echo "Options:"
     echo "  --shards N    Number of array shards (default: 6, for vLLM stages)"
     echo "  --input  path Input file (default: data/wildchat_raw.jsonl for coarse_filter;"
@@ -59,7 +59,7 @@ fi
 
 # Auto-number the experiment folder
 LAST_NUM=$(ls experiments/ 2>/dev/null | grep -oE '^[0-9]+' | sort -n | tail -1)
-N=$(( ${LAST_NUM:-0} + 1 ))
+N=$(( 10#${LAST_NUM:-0} + 1 ))
 EXPERIMENT_DIR="experiments/$(printf '%02d' $N)_${STAGE}"
 
 mkdir -p "${EXPERIMENT_DIR}/logs" "${EXPERIMENT_DIR}/figures" "${EXPERIMENT_DIR}/results"
@@ -81,7 +81,7 @@ case $STAGE in
 
         if [ "$STAGE" = "coarse_filter" ]; then
             export OUTPUT_BASE="data/${MEASURE}_coarse"
-            export EXTRA_ARGS="--prompt-version v4 --concurrency_limit 100"
+            export EXTRA_ARGS="--prompt-version v1 --concurrency_limit 100"
             OUTPUT_FILE="${EXPERIMENT_DIR}/results/${MEASURE}_coarse.jsonl"
         else
             export OUTPUT_BASE="data/${MEASURE}_scores"
@@ -121,7 +121,7 @@ case $STAGE in
             exit 1
         fi
 
-        OUTPUT_FILE="${EXPERIMENT_DIR}/results/${MEASURE}_high_quality.csv"
+        OUTPUT_FILE="${EXPERIMENT_DIR}/results/${MEASURE}_high_quality.jsonl"
 
         JID=$(sbatch --parsable \
             --job-name=${MEASURE}_high_quality \
@@ -130,13 +130,34 @@ case $STAGE in
             --ntasks=1 --cpus-per-task=4 --mem=16G --time=4:00:00 \
             --output=${EXPERIMENT_DIR}/logs/job_%j.out \
             --error=${EXPERIMENT_DIR}/logs/job_%j.err \
-            --wrap="cd $(pwd) && module purge && module load gcc/13.3.0 && export PATH=\"\$HOME/.local/bin:\$PATH\" && uv run python src/run.py --measure ${MEASURE} --stage high_quality_filter --experiment_dir ${EXPERIMENT_DIR} --input ${INPUT} --output ${OUTPUT_FILE} --key ${KEY}")
+            --wrap="cd $(pwd) && module purge && module load gcc/13.3.0 && export PATH=\"\$HOME/.local/bin:\$PATH\" && uv run python src/filter/run.py --measure ${MEASURE} --stage high_quality_filter --experiment_dir ${EXPERIMENT_DIR} --input_path ${INPUT} --output_path ${OUTPUT_FILE} --key ${KEY}")
+        echo "Job submitted: $JID"
+        echo "Final output: ${OUTPUT_FILE}"
+        ;;
+
+    final_filter)
+        # ── Single CPU job, OpenRouter API (Opus 4.6) ────────────────────────
+        if [ -z "$KEY" ]; then
+            echo "ERROR: --key is required for final_filter"
+            exit 1
+        fi
+
+        OUTPUT_FILE="${EXPERIMENT_DIR}/results/${MEASURE}_final.jsonl"
+
+        JID=$(sbatch --parsable \
+            --job-name=${MEASURE}_final \
+            --partition=nlp \
+            --account=$ACCOUNT \
+            --ntasks=1 --cpus-per-task=4 --mem=16G --time=4:00:00 \
+            --output=${EXPERIMENT_DIR}/logs/job_%j.out \
+            --error=${EXPERIMENT_DIR}/logs/job_%j.err \
+            --wrap="cd $(pwd) && module purge && module load gcc/13.3.0 && export PATH=\"\$HOME/.local/bin:\$PATH\" && uv run python src/filter/run.py --measure ${MEASURE} --stage final_filter --experiment_dir ${EXPERIMENT_DIR} --input_path ${INPUT} --output_path ${OUTPUT_FILE} --key ${KEY}")
         echo "Job submitted: $JID"
         echo "Final output: ${OUTPUT_FILE}"
         ;;
 
     *)
-        echo "ERROR: Unknown stage '$STAGE'. Use: coarse_filter, low_quality_filter, high_quality_filter"
+        echo "ERROR: Unknown stage '$STAGE'. Use: coarse_filter, low_quality_filter, high_quality_filter, final_filter"
         exit 1
         ;;
 

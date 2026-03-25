@@ -23,10 +23,11 @@ slurm_logs/
 wandb/
 logs/
 
-# Experiment outputs (results/logs/figures inside experiment folders)
+# Experiment outputs (results/logs/figures/src snapshots inside experiment folders)
 experiments/*/results/
 experiments/*/logs/
 experiments/*/figures/
+experiments/*/src/
 
 # OS
 .DS_Store
@@ -37,3 +38,8 @@ data/
 *.pt
 *.bin
 *.safetensors
+
+# API keys
+*api_key*
+*openrouter_key*
+*.key

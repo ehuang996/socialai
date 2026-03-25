@@ -11,5 +11,5 @@ Each numbered folder is a self-contained experiment with its own sbatch scripts,
 ## Convention
 - Create new numbered folders (`04_xxx/`, `05_xxx/`, ...) for new experiments — don't edit old ones.
 - Each folder contains: sbatch scripts, `results/`, `logs/`, `figures/`, and `README.md` (observations).
-- Sbatch scripts call `src/run.py --measure <measure> --stage <stage> --experiment_dir experiments/<folder>`, which snapshots `src/` into the experiment folder for version control.
+- Sbatch scripts call `src/filter/run.py --measure <measure> --stage <stage> --experiment_dir experiments/<folder>`, which snapshots `src/filter/` into the experiment folder for version control.
 - This README should only contain brief descriptions of each experiment. Detailed setup, results, and observations belong in each experiment's own `README.md`.
