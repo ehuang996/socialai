@@ -8,21 +8,33 @@ measure as a list (e.g. ["1B_human_disfluencies", "2C_sycophancy"]).
 
 import argparse
 import json
+import re
 from collections import OrderedDict
 from pathlib import Path
 
 
-MEASURES = [
-    ("19", "1B_human_disfluencies"),
-    ("20", "1C_identity_transparency"),
-    ("21", "2A_fabricated_personal_details"),
-    ("22", "2B_explicit_emotions"),
-    ("23", "2B_implicit_emotions"),
-    ("24", "2B_romantic_bonding"),
-    ("25", "2C_sycophancy"),
-    ("26", "2D_human_relationship_encouragement"),
-    ("27", "3A_engagement_hooks"),
-]
+def discover_final_filter_experiments(experiments_dir: Path) -> list[tuple[str, str]]:
+    """Auto-discover final_filter experiments by scanning the experiments directory.
+
+    Returns list of (exp_num, measure_name) tuples sorted by experiment number.
+    """
+    measures = []
+    for d in sorted(experiments_dir.iterdir()):
+        if not d.is_dir():
+            continue
+        m = re.match(r"^(\d+)_final_filter$", d.name)
+        if not m:
+            continue
+        exp_num = m.group(1)
+        results_dir = d / "results"
+        if not results_dir.exists():
+            continue
+        for f in results_dir.iterdir():
+            fm = re.match(r"^(.+)_final\.jsonl$", f.name)
+            if fm:
+                measures.append((exp_num, fm.group(1)))
+                break
+    return measures
 
 
 def main():
@@ -41,9 +53,32 @@ def main():
         "--model", type=str, default="claude_opus_4_6",
         help="Model key in model_responses (default: claude_opus_4_6)",
     )
+    parser.add_argument(
+        "--experiments", type=str, default=None,
+        help="Comma-separated list of experiment_num:measure pairs to use "
+             "(e.g. '19:1B_human_disfluencies,20:1C_identity_transparency'). "
+             "If not provided, auto-discovers all final_filter experiments.",
+    )
     args = parser.parse_args()
 
     experiments_dir = Path(args.experiments_dir)
+
+    if args.experiments:
+        measures = []
+        for entry in args.experiments.split(","):
+            exp_num, measure = entry.strip().split(":")
+            measures.append((exp_num, measure))
+    else:
+        measures = discover_final_filter_experiments(experiments_dir)
+        if not measures:
+            print("ERROR: No final_filter experiments found in", experiments_dir)
+            return
+
+    print(f"Found {len(measures)} final_filter experiments:")
+    for exp_num, measure in measures:
+        print(f"  {exp_num}_final_filter -> {measure}")
+    print()
+
     total = 0
     kept_before_dedup = 0
     errors = 0
@@ -52,7 +87,7 @@ def main():
     # OrderedDict preserves insertion order (first measure seen)
     seen = OrderedDict()  # user_input -> row dict (with measure as list)
 
-    for exp_num, measure in MEASURES:
+    for exp_num, measure in measures:
         result_path = (
             experiments_dir
             / f"{exp_num}_final_filter"

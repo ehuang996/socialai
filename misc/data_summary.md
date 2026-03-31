@@ -1,292 +1,226 @@
-# Pipeline Results Summary
+# Pipeline Results Summary (Re-run #2 — Broadened CHECK 1 Prompt)
 
-## Pipeline Overview
+Previous results are in `misc/old_data_summary.md`. Prompt changes documented in `misc/filter_prompt_changes.md`.
+
+**What changed in re-run #1 (all measures):** Stage 3 and Stage 4 prompts (filter3.json, filter4.json) were updated for all 9 measures to fix `category_keep` semantics — the old prompts never defined what `category_keep: true/false` means, so models defaulted to "keep=true means conversation is acceptable" instead of "behavior IS present." The corrected prompts add explicit instructions like "If the assistant DOES exhibit X, return category_keep: true."
+
+**What changed in re-run #1 (2C_sycophancy only):** Stages 2-4 prompts (filter2.json, filter3.json, filter4.json) were further updated to broaden the sycophancy definition — removed "excessive" and "dramatically" qualifiers (e.g., "excessive flattery" → "flattery", "praise dramatically out of proportion" → "praise out of proportion").
+
+**What changed in re-run #2 (current, all measures):** The CHECK 1 prompt in filter3.json and filter4.json was replaced across all 9 measures. The old "Casual Conversation (Chitchat)" check was too restrictive — it discarded "question answering or information seeking" broadly, which rejected conversations where users were genuinely engaging with the AI (sharing opinions, asking personal questions, venting) but happened to include a question. The new "Genuine User-AI Interaction" check only discards purely factual Q&A with no conversational element, and explicitly keeps casual chat, personal feelings, opinions, advice-seeking, and complimenting/greeting the AI. This is expected to significantly increase data yield, especially for categories like 2C_sycophancy where the chitchat filter was the main bottleneck (413 chitchat-only discards vs 34 both-KEEP in re-run #1). Stages 3-4 are being re-run for all measures.
+
+## Stages 0-1 (Unchanged)
+
+These stages were NOT re-run — results carry over from the original pipeline.
+
 - **Stage 0**: Downloaded WildChat-4.8M, filtered English, deduplicated -> `data/wildchat_raw.jsonl`
 - **Stage 1 (Coarse Filter)**: 573,367 chitchat conversations retained
-- **Stage 2 (Low-Quality Filter)**: 560,969 conversations processed (12,394 skipped due to >24k char limit)
 
-## Stage 2 Results
+## Stage 2 (Low-Quality Filter)
 
-| Measure | Experiment | keep=True | % | keep=False | Est. Stage 3 Cost |
-|---|---|---|---|---|---|
-| 1B_human_disfluencies | 01_low_quality_filter | 943 | 0.17% | 560,026 | ~$8 |
-| 1C_identity_transparency | 02_low_quality_filter | 6,855 | 1.22% | 554,114 | ~$55 |
-| 2A_fabricated_personal_details | 03_low_quality_filter | 1,137 | 0.20% | 559,832 | ~$10 |
-| 2B_explicit_emotions | 04_low_quality_filter | 2,350 | 0.42% | 558,577 | ~$19 |
-| 2B_implicit_emotions | 05_low_quality_filter | 5,054 | 0.90% | 555,851 | ~$40 |
-| 2B_romantic_bonding | 06_low_quality_filter | 12,895 | 2.30% | 548,025 | ~$103 |
-| 2C_sycophancy | 07_low_quality_filter | 1,969 | 0.35% | 558,826 | ~$16 |
-| 2D_human_relationship_encouragement | 08_low_quality_filter | 434 | 0.08% | 560,518 | ~$4 |
-| 3A_engagement_hooks | 09_low_quality_filter | 926 | 0.17% | 559,979 | ~$8 |
+560,969 conversations processed (12,394 skipped due to >24k char limit). All measures unchanged except 2C_sycophancy, which was re-run with broadened prompts (removed "excessive"/"dramatically" qualifiers). Note: 2C_sycophancy processed 561,963 rows (994 more than the other measures, likely due to slightly different char-limit filtering by the new Qwen run).
 
-**Total: 32,563 keep=True | ~$263 estimated Stage 3 cost**
+| Measure | Experiment | keep=True | % | Notes |
+|---|---|---|---|---|
+| 1B_human_disfluencies | 01_low_quality_filter | 943 | 0.17% | |
+| 1C_identity_transparency | 02_low_quality_filter | 6,855 | 1.22% | |
+| 2A_fabricated_personal_details | 03_low_quality_filter | 1,137 | 0.20% | |
+| 2B_explicit_emotions | 04_low_quality_filter | 2,350 | 0.42% | |
+| 2B_implicit_emotions | 05_low_quality_filter | 5,054 | 0.90% | |
+| 2B_romantic_bonding | 06_low_quality_filter | 12,895 | 2.30% | |
+| 2C_sycophancy | 07_low_quality_filter | 2,151 | 0.38% | Re-run with broadened prompts (was 1,969) |
+| 2D_human_relationship_encouragement | 08_low_quality_filter | 434 | 0.08% | |
+| 3A_engagement_hooks | 09_low_quality_filter | 926 | 0.17% | |
 
-## Timing
-- Each measure takes ~3-5 hours (6 shards, bottlenecked by slowest shard)
-- 6 GPU max per user (QOSMaxGRESPerUser) — shards run in rounds
-- All Stage 2 runs complete
+**Total: 32,745 keep=True (was 32,563 — 2C_sycophancy increased by +182)**
 
-## Stage 3 Results (GPT-4o-mini via OpenRouter)
+## Stage 3 Results — Re-run #1 (GPT-4o-mini via OpenRouter)
 
-Stage 3 performs a dual-check: (1) is it genuine chitchat? (2) does it match the category? Final dataset = intersection of both KEEP.
+Experiments 10-18 (now in `experiments/old/`). Dual-check: (1) is it chitchat? (2) does it match the category? Used the old restrictive "Casual Conversation (Chitchat)" CHECK 1.
 
 | Measure | Experiment | Stage 2 in | Both KEEP | Chitchat only | Category only | Neither |
 |---|---|---|---|---|---|---|
-| 1B_human_disfluencies | 10_high_quality_filter | 943 | 70 (7.4%) | 10 | 77 | 785 |
-| 1C_identity_transparency | 11_high_quality_filter | 6,855 | 207 (3.0%) | 1,561 | 1,106 | 3,977 |
-| 2A_fabricated_personal_details | 12_high_quality_filter | 1,137 | 68 (6.0%) | 34 | 318 | 716 |
-| 2B_explicit_emotions | 13_high_quality_filter | 2,350 | 56 (2.4%) | 690 | 203 | 1,400 |
-| 2B_implicit_emotions | 14_high_quality_filter | 5,054 | 689 (13.6%) | 453 | 776 | 3,136 |
-| 2B_romantic_bonding | 15_high_quality_filter | 12,895 | 106 (0.8%) | 641 | 560 | 11,583 |
-| 2C_sycophancy | 16_high_quality_filter | 1,969 | 290 (14.7%) | 246 | 1,009 | 423 |
-| 2D_human_relationship_encouragement | 17_high_quality_filter | 434 | 1 (0.2%) | 77 | 119 | 237 |
-| 3A_engagement_hooks | 18_high_quality_filter | 926 | 260 (28.1%) | 10 | 362 | 293 |
+| 1B_human_disfluencies | 10_high_quality_filter | 943 | 27 (2.9%) | 46 | 440 | 430 |
+| 1C_identity_transparency | 11_high_quality_filter | 6,855 | 293 (4.3%) | 1,241 | 800 | 4,521 |
+| 2A_fabricated_personal_details | 12_high_quality_filter | 1,137 | 24 (2.1%) | 80 | 505 | 528 |
+| 2B_explicit_emotions | 13_high_quality_filter | 2,350 | 63 (2.7%) | 707 | 600 | 980 |
+| 2B_implicit_emotions | 14_high_quality_filter | 5,054 | 826 (16.3%) | 352 | 1,216 | 2,660 |
+| 2B_romantic_bonding | 15_high_quality_filter | 12,895 | 32 (0.2%) | 791 | 363 | 11,709 |
+| 2C_sycophancy | 16_high_quality_filter | 2,151 | 34 (1.6%) | 413 | 566 | 1,138 |
+| 2D_human_relationship_encouragement | 17_high_quality_filter | 434 | 2 (0.5%) | 85 | 167 | 180 |
+| 3A_engagement_hooks | 18_high_quality_filter | 926 | 11 (1.2%) | 236 | 149 | 530 |
 
-**Total: 1,747 both-KEEP across all 9 measures — all Stage 3 jobs complete**
+**Total: 1,312 both-KEEP across all 9 measures**
 
-## Stage 4 Results (Opus 4.6 via OpenRouter)
+**Key bottleneck:** The chitchat filter was too restrictive. For 2C_sycophancy, 413 rows were discarded as "chitchat-only=false" (i.e., had the sycophancy behavior but were rejected by CHECK 1). Similar patterns across other measures.
 
-Stage 4 re-evaluates the 1,747 Stage 3 intersection rows with Opus 4.6 (same dual-check prompt).
+## Stage 3 Results — Re-run #2 (COMPLETE)
+
+Experiments 10-18 (new). Uses the broadened "Genuine User-AI Interaction" CHECK 1 prompt. All 9 jobs complete.
+
+| Measure | Experiment | Stage 2 in | Both KEEP | Chitchat only | Category only | Neither |
+|---|---|---|---|---|---|---|
+| 1B_human_disfluencies | 10_high_quality_filter | 943 | 40 (4.2%) | 100 | 108 | 695 |
+| 1C_identity_transparency | 11_high_quality_filter | 6,855 | 1,419 (20.7%) | 2,363 | 44 | 3,029 |
+| 2A_fabricated_personal_details | 12_high_quality_filter | 1,137 | 77 (6.8%) | 255 | 264 | 541 |
+| 2B_explicit_emotions | 13_high_quality_filter | 2,350 | 165 (7.0%) | 1,112 | 91 | 982 |
+| 2B_implicit_emotions | 14_high_quality_filter | 5,054 | 1,875 (37.1%) | 185 | 179 | 2,815 |
+| 2B_romantic_bonding | 15_high_quality_filter | 12,895 | 110 (0.9%) | 744 | 119 | 11,922 |
+| 2C_sycophancy | 16_high_quality_filter | 2,151 | 83 (3.9%) | 1,032 | 191 | 845 |
+| 2D_human_relationship_encouragement | 17_high_quality_filter | 434 | 44 (10.1%) | 179 | 31 | 180 |
+| 3A_engagement_hooks | 18_high_quality_filter | 926 | 17 (1.8%) | 382 | 54 | 473 |
+
+**Total: 3,830 both-KEEP across all 9 measures**
+
+### Comparison to re-run #1
+
+| Measure | Re-run #1 Both KEEP | Re-run #2 Both KEEP | Change |
+|---|---|---|---|
+| 1B_human_disfluencies | 27 (2.9%) | 40 (4.2%) | +13 (+48%) |
+| 1C_identity_transparency | 293 (4.3%) | 1,419 (20.7%) | +1,126 (+384%) |
+| 2A_fabricated_personal_details | 24 (2.1%) | 77 (6.8%) | +53 (+221%) |
+| 2B_explicit_emotions | 63 (2.7%) | 165 (7.0%) | +102 (+162%) |
+| 2B_implicit_emotions | 826 (16.3%) | 1,875 (37.1%) | +1,049 (+127%) |
+| 2B_romantic_bonding | 32 (0.2%) | 110 (0.9%) | +78 (+244%) |
+| 2C_sycophancy | 34 (1.6%) | 83 (3.9%) | +49 (+144%) |
+| 2D_human_relationship_encouragement | 2 (0.5%) | 44 (10.1%) | +42 (+2100%) |
+| 3A_engagement_hooks | 11 (1.2%) | 17 (1.8%) | +6 (+55%) |
+| **Total** | **1,312** | **3,830** | **+2,518 (+192%)** |
+
+The broadened CHECK 1 prompt nearly tripled the total both-KEEP count (1,312 → 3,830). Every measure increased. The biggest winners: 1C_identity_transparency (+1,126, from 293 to 1,419), 2B_implicit_emotions (+1,049, from 826 to 1,875), and 2D_human_relationship_encouragement (+2,100%, from 2 to 44). 2C_sycophancy more than doubled (34 → 83). The chitchat-only column is now much larger across the board, confirming the old CHECK 1 was the main bottleneck.
+
+## Stage 4 Results — Re-run #1 (Opus 4.6 via OpenRouter)
+
+Experiments 19-27 (now in `experiments/old/`). Re-evaluated Stage 3 intersection rows with Opus 4.6 (same corrected dual-check prompt, but old restrictive CHECK 1).
+
+| Measure | Experiment | Stage 3 in | Processed | Both KEEP | Chitchat only | Category only | Neither | Errors |
+|---|---|---|---|---|---|---|---|---|
+| 1B_human_disfluencies | 19_final_filter | 27 | 27 | 2 (7.4%) | 18 | 0 | 6 | 1 |
+| 1C_identity_transparency | 20_final_filter | 293 | 293 | 67 (22.9%) | 118 | 3 | 103 | 2 |
+| 2A_fabricated_personal_details | 21_final_filter | 24 | 24 | 2 (8.3%) | 2 | 3 | 17 | 0 |
+| 2B_explicit_emotions | 22_final_filter | 63 | 63 | 38 (60.3%) | 5 | 3 | 17 | 0 |
+| 2B_implicit_emotions | 23_final_filter | 826 | 826 | 129 (15.6%) | 395 | 2 | 280 | 20 |
+| 2B_romantic_bonding | 24_final_filter | 32 | 32 | 7 (21.9%) | 4 | 0 | 21 | 0 |
+| 2C_sycophancy | — | — | — | — | — | — | — | — |
+| 2D_human_relationship_encouragement | 26_final_filter | 2 | 2 | 0 (0.0%) | 1 | 1 | 0 | 0 |
+| 3A_engagement_hooks | 27_final_filter | 11 | 11 | 0 (0.0%) | 3 | 1 | 7 | 0 |
+
+**Total (re-run #1): 245 both-KEEP (excluding 2C_sycophancy which was not completed)**
+
+## Stage 4 Results — Re-run #2 (COMPLETE)
+
+Experiments 19-27. Re-evaluates Stage 3 intersection rows (both-KEEP) with Opus 4.6 and the broadened CHECK 1 prompt. All 9 jobs complete.
 
 | Measure | Experiment | Stage 3 in | Both KEEP | Chitchat only | Category only | Neither | Errors |
 |---|---|---|---|---|---|---|---|
-| 1B_human_disfluencies | 19_final_filter | 70 | 23 (32.9%) | 13 | 10 | 23 | 1 |
-| 1C_identity_transparency | 20_final_filter | 207 | 62 (30.0%) | 58 | 24 | 60 | 3 |
-| 2A_fabricated_personal_details | 21_final_filter | 68 | 12 (17.6%) | 8 | 25 | 15 | 8 |
-| 2B_explicit_emotions | 22_final_filter | 56 | 15 (26.8%) | 25 | 1 | 15 | 0 |
-| 2B_implicit_emotions | 23_final_filter | 689 | 112 (16.3%) | 336 | 2 | 226 | 13 |
-| 2B_romantic_bonding | 24_final_filter | 106 | 41 (38.7%) | 5 | 59 | 1 | 0 |
-| 2C_sycophancy | 25_final_filter | 290 | 148 (51.0%) | 10 | 116 | 3 | 13 |
-| 2D_human_relationship_encouragement | 26_final_filter | 1 | 0 (0.0%) | 0 | 0 | 1 | 0 |
-| 3A_engagement_hooks | 27_final_filter | 260 | 129 (49.6%) | 2 | 110 | 4 | 15 |
+| 1B_human_disfluencies | 19_final_filter | 40 | 5 (12.5%) | 21 | 1 | 13 | 0 |
+| 1C_identity_transparency | 20_final_filter | 1,419 | 142 (10.0%) | 518 | 3 | 756 | 0 |
+| 2A_fabricated_personal_details | 21_final_filter | 77 | 11 (14.3%) | 3 | 11 | 52 | 0 |
+| 2B_explicit_emotions | 22_final_filter | 165 | 62 (37.6%) | 18 | 13 | 72 | 0 |
+| 2B_implicit_emotions | 23_final_filter | 1,875 | 185 (9.9%) | 928 | 7 | 755 | 0 |
+| 2B_romantic_bonding | 24_final_filter | 110 | 24 (21.8%) | 13 | 1 | 72 | 0 |
+| 2C_sycophancy | 25_final_filter | 83 | 18 (21.7%) | 11 | 6 | 48 | 0 |
+| 2D_human_relationship_encouragement | 26_final_filter | 44 | 4 (9.1%) | 2 | 2 | 36 | 0 |
+| 3A_engagement_hooks | 27_final_filter | 17 | 1 (5.9%) | 6 | 1 | 9 | 0 |
 
-**Total: 542 both-KEEP across all 9 measures — all Stage 4 jobs complete**
+**Total: 452 both-KEEP across all 9 measures**
 
-## Stage 5 — Collect & Deduplicate
+### Comparison to re-run #1
 
-Stage 5 collects all 542 both-KEEP rows from Stage 4, then deduplicates by `user_input`. The same WildChat conversation can be flagged by multiple measures (e.g., a conversation may exhibit both sycophancy and engagement hooks). After deduplication, each conversation appears once with `measure` as a list.
-
-- **Before dedup:** 542 rows (raw both-KEEP from Stage 4)
-- **After dedup:** 439 unique conversations, 518 measure labels
-- **24 within-measure duplicates removed:** same `user_input` appeared multiple times under the same measure (from overlapping shards), collapsed into one entry
-- **Single-measure rows:** 373
-- **Multi-measure rows:** 66 (53 with 2 measures, 13 with 3 measures)
-
-| Measure | Raw (Stage 4) | After Dedup | Within-measure dupes removed |
+| Measure | Re-run #1 Both KEEP | Re-run #2 Both KEEP | Change |
 |---|---|---|---|
-| 1B_human_disfluencies | 23 | 22 | 1 |
-| 1C_identity_transparency | 62 | 53 | 9 |
-| 2A_fabricated_personal_details | 12 | 12 | 0 |
-| 2B_explicit_emotions | 15 | 15 | 0 |
-| 2B_implicit_emotions | 112 | 105 | 7 |
-| 2B_romantic_bonding | 41 | 37 | 4 |
-| 2C_sycophancy | 148 | 146 | 2 |
-| 2D_human_relationship_encouragement | 0 | 0 | 0 |
-| 3A_engagement_hooks | 129 | 128 | 1 |
-| **Total** | **542** | **518** | **24** |
+| 1B_human_disfluencies | 2 | 5 | +3 (+150%) |
+| 1C_identity_transparency | 67 | 142 | +75 (+112%) |
+| 2A_fabricated_personal_details | 2 | 11 | +9 (+450%) |
+| 2B_explicit_emotions | 38 | 62 | +24 (+63%) |
+| 2B_implicit_emotions | 129 | 185 | +56 (+43%) |
+| 2B_romantic_bonding | 7 | 24 | +17 (+243%) |
+| 2C_sycophancy | — | 18 | new (never completed in re-run #1) |
+| 2D_human_relationship_encouragement | 0 | 4 | +4 (∞) |
+| 3A_engagement_hooks | 0 | 1 | +1 (∞) |
+| **Total** | **245** | **452** | **+207 (+84%)** |
 
-Output: `data/final_439.jsonl`
+The broadened CHECK 1 prompt nearly doubled Stage 4 both-KEEP (245 → 452, +84%). Every measure increased. 2C_sycophancy now has 18 both-KEEP (was never completed in re-run #1). Categories that were previously at 0 (2D, 3A) now have data. Opus 4.6 remains more selective than GPT-4o-mini (452/3,830 = 11.8% pass rate at Stage 4 vs 3,830/32,745 = 11.7% at Stage 3).
 
-## Stage 6 — Generate Model Responses
+## Stage 5 — Collect & Deduplicate (COMPLETE)
 
-Stage 6 sends each of the 439 unique conversations to 14 models via OpenRouter and records their responses.
+Collects all 452 both-KEEP rows from Stage 4, deduplicates by `user_input`. Conversations appearing in multiple measures get a single row with `measure` as a list.
 
-**Model set 1 (original 4):** grok3_mini_beta, gpt4o_mini, gemini2_flash_001, claude_sonnet_4
+- **Total rows scanned:** 3,830
+- **Errors (parse failures):** 108
+- **Both KEEP (before dedup):** 452
+- **After dedup:** 323 unique conversations
+- **Single-measure rows:** 264
+- **Multi-measure rows:** 59
 
-**Model set 2 (10 newer models):** o4_mini, gpt5_3, gpt5_4, gpt5_4_pro, claude_haiku, claude_sonnet, claude_opus, gemini3_flash, gemini3_1_pro, grok4
-
-Output: `data/model_responses_439.jsonl` — 439 rows, 14 models each, `measure` as a list
-
-### Single-turn vs Multi-turn Split
-
-The 439 conversations have two distinct formats in `user_input`:
-- **Single-turn (132):** Plain user message with no conversation markers
-- **Multi-turn (307):** Contains role markers (`User:`, `Assistant:`, `System:`, `bot:`, `gpt:`, `LLM:`, etc. — case-insensitive) — these are WildChat conversations where the user's first message was a pasted conversation transcript (e.g., roleplay setups, "continue this conversation" requests)
-
-Classification method: regex `(?:^|\n)\s*(?:user|assistant|system|bot|gpt|llm|prompt|human|ai)\s*:` (case-insensitive). ~5-7 borderline single-turn cases exist (e.g., JSON-like lists `['vijai', [...]]` or inline pasted assistant responses without explicit role markers) but are kept as single-turn since they lack clear role alternation.
-
-The pipeline correctly treated all 439 as single-turn (Stage 1 only reads `conversation[0]`). The multi-turn markers come from the original user message content, not from the pipeline extracting multiple turns.
-
-**Evaluation concern:** When `generate_responses.py` sends multi-turn inputs as a single `{"role": "user"}` message, models are being asked to *continue a pasted transcript* rather than *participate in a real multi-turn exchange*. This may cause models to role-play or mimic the transcript's assistant style rather than exhibit their natural behavior. For cleaner evaluation, single-turn conversations are more reliable since the model receives a genuine user prompt.
-
-Split files:
-- `data/single_turn_model_responses_439.jsonl` — 132 rows (140 measure labels)
-- `data/multi_turn_model_responses_439.jsonl` — 307 rows (378 measure labels)
-
-| Measure | Single-turn | Multi-turn |
+| Measure | Raw (Stage 4) | After Dedup |
 |---|---|---|
-| 1B_human_disfluencies | 4 | 18 |
-| 1C_identity_transparency | 22 | 31 |
-| 2A_fabricated_personal_details | 2 | 10 |
-| 2B_explicit_emotions | 5 | 10 |
-| 2B_implicit_emotions | 36 | 69 |
-| 2B_romantic_bonding | 30 | 7 |
-| 2C_sycophancy | 31 | 115 |
-| 3A_engagement_hooks | 10 | 118 |
+| 1B_human_disfluencies | 5 | 5 |
+| 1C_identity_transparency | 142 | 142 |
+| 2A_fabricated_personal_details | 11 | 11 |
+| 2B_explicit_emotions | 62 | 62 |
+| 2B_implicit_emotions | 185 | 185 |
+| 2B_romantic_bonding | 24 | 24 |
+| 2C_sycophancy | 18 | 18 |
+| 2D_human_relationship_encouragement | 4 | 4 |
+| 3A_engagement_hooks | 1 | 1 |
+| **Total** | **452** | **323 unique** |
 
-## Stage 7.1 — LLM-as-Judge: Single-Turn Evaluation
+Output: `data/final_452.jsonl`
 
-Stage 7.1 evaluates all 14 model responses on the 132 single-turn conversations using Opus 4.6 as judge. Each model response is evaluated against the category-specific rubric (`filter2.json`) for every measure in the row's `measure` list.
+### Comparison to re-run #1
 
-- **Input:** 132 single-turn rows × 140 measure-labels × 14 models = **1,960 judge calls**
-- **Judge:** Opus 4.6 via OpenRouter (~$43 estimated cost)
-- **Output:** `data/stage7_1_eval_results.jsonl`
-- **Errors:** 0 (1 initial parse error from unescaped quotes in reasoning, fixed with regex fallback)
-- **Results:** `keep=true` (violation detected): **514** (26.2%), `keep=false`: **1,446** (73.8%)
+| | Re-run #1 | Re-run #2 | Change |
+|---|---|---|---|
+| Both-KEEP (raw) | 245 | 452 | +207 (+84%) |
+| Unique conversations | 189 | 323 | +134 (+71%) |
+| Single-measure | 159 | 264 | +105 (+66%) |
+| Multi-measure | 59 | 59 | 0 |
 
-Sort order: grouped by user_input → measure (1B→3A) → model family (OpenAI → Gemini → Claude → Grok, newest→oldest within family).
+## Stage 5.5 — Split Single-Turn / Multi-Turn (COMPLETE)
 
-## Stage 8.1 — Analysis of Single-Turn Judge Results
+Uses Opus 4.6 via OpenRouter to classify each of the 323 unique conversations as single-turn (standalone user message) or multi-turn (pasted conversation transcript with role labels).
 
-All figures are saved in `data/stage8.1_figures/`. Generated by `src/evaluation/stage8.1/analyze_single_turn.py`.
+- **Single-turn:** 148 conversations → `data/single_turn_final_452.jsonl`
+- **Multi-turn:** 175 conversations → `data/multi_turn_final_452.jsonl`
+- **Classification report:** `data/split_report_final_452.json`
 
-### Overall Violation Rate by Model
-
-| Model | Family | Violations | Total | Rate |
-|---|---|---|---|---|
-| GPT-5-4 Pro | OpenAI | 28 | 140 | 20.0% |
-| GPT-5-4 | OpenAI | 39 | 140 | 27.9% |
-| GPT-5-3 | OpenAI | 42 | 140 | 30.0% |
-| o4-mini | OpenAI | 41 | 140 | 29.3% |
-| GPT-4o-mini | OpenAI | 40 | 140 | 28.6% |
-| Gemini 3.1 Pro | Google | 38 | 140 | 27.1% |
-| Gemini 3 Flash | Google | 47 | 140 | 33.6% |
-| Gemini 2 Flash | Google | 37 | 140 | 26.4% |
-| Claude Opus | Anthropic | 26 | 140 | 18.6% |
-| Claude Sonnet | Anthropic | 27 | 140 | 19.3% |
-| Claude Sonnet 4 | Anthropic | 27 | 140 | 19.3% |
-| Claude Haiku | Anthropic | 26 | 140 | 18.6% |
-| Grok 4 | xAI | 55 | 140 | 39.3% |
-| Grok 3 Mini | xAI | 41 | 140 | 29.3% |
-
-### Overall Violation Rate by Measure
-
-| Measure | Inputs | Violations | Total | Rate |
-|---|---|---|---|---|
-| 1B Disfluencies | 4 | 7 | 56 | 12.5% |
-| 1C Identity | 22 | 193 | 308 | 62.7% |
-| 2A Fabrication | 2 | 0 | 28 | 0.0% |
-| 2B Explicit Emo | 5 | 25 | 70 | 35.7% |
-| 2B Implicit Emo | 36 | 233 | 504 | 46.2% |
-| 2B Romantic | 30 | 0 | 420 | 0.0% |
-| 2C Sycophancy | 31 | 55 | 434 | 12.7% |
-| 3A Engagement | 10 | 1 | 140 | 0.7% |
-
-### Violation Rate (%) — Model × Measure
-
-| Model |1B|1C|2A|2B Exp|2B Imp|2B Rom|2C|3A| Avg |
-|---|---|---|---|---|---|---|---|---|---|
-| GPT-5-4 Pro |0|59|0|40|31|0|6|0| 20.0% |
-| GPT-5-4 |0|82|0|40|42|0|13|0| 27.9% |
-| GPT-5-3 |0|91|0|40|53|0|3|0| 30.0% |
-| o4-mini |25|95|0|40|33|0|16|0| 29.3% |
-| GPT-4o-mini |0|86|0|40|33|0|23|0| 28.6% |
-| Gemini 3.1 Pro |25|59|0|20|47|0|19|0| 27.1% |
-| Gemini 3 Flash |25|77|0|60|64|0|10|0| 33.6% |
-| Gemini 2 Flash |0|59|0|20|50|0|16|0| 26.4% |
-| Claude Opus |0|27|0|40|42|0|10|0| 18.6% |
-| Claude Sonnet |25|41|0|40|36|0|6|0| 19.3% |
-| Claude Sonnet 4 |25|32|0|20|36|0|16|0| 19.3% |
-| Claude Haiku |25|32|0|20|39|0|10|0| 18.6% |
-| Grok 4 |0|95|0|40|72|0|16|10| 39.3% |
-| Grok 3 Mini |25|41|0|40|69|0|13|0| 29.3% |
-
-### Family Summary
-
-| Family | Models | Avg Violation Rate | Best Model | Worst Model |
-|---|---|---|---|---|
-| OpenAI | 5 | 27.1% | GPT-5-4 Pro (20.0%) | GPT-5-3 (30.0%) |
-| Google | 3 | 29.0% | Gemini 2 Flash (26.4%) | Gemini 3 Flash (33.6%) |
-| Anthropic | 4 | 18.9% | Claude Haiku (18.6%) | Claude Sonnet (19.3%) |
-| xAI | 2 | 34.3% | Grok 3 Mini (29.3%) | Grok 4 (39.3%) |
-
-### Improvement — Newest vs Oldest (change in violation rate, pp)
-
-| Family | Oldest | Newest |1B|1C|2A|2B Exp|2B Imp|2B Rom|2C|3A| Avg |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| OpenAI | GPT-4o-mini | GPT-5-4 Pro |+0|-27|+0|+0|-3|+0|-16|+0| -5.8 |
-| Google | Gemini 2 Flash | Gemini 3.1 Pro |+25|+0|+0|+0|-3|+0|+3|+0| +3.2 |
-| Anthropic | Claude Haiku | Claude Opus |-25|-5|+0|+20|+3|+0|+0|+0| -0.8 |
-| xAI | Grok 3 Mini | Grok 4 |-25|+55|+0|+0|+3|+0|+3|+10| +5.7 |
-
-### Model Consensus per Prompt
-
-How many of the 14 models trigger a violation on the same (input, measure)?
-
-| Models Violating | Count | % of Prompts |
+| Split | Count | % |
 |---|---|---|
-| 0 (None) | 66 | 47.1% |
-| 1-3 (Few) | 14 | 10.0% |
-| 4-7 (Half) | 25 | 17.9% |
-| 8-14 (Most/All) | 35 | 25.0% |
+| Single-turn | 148 | 45.8% |
+| Multi-turn | 175 | 54.2% |
+| **Total** | **323** | 100% |
 
-### Figures
+### Comparison to re-run #1
 
-**Figure 1: Overall Violation Rate by Model** (`fig1_overall_violation_rate.png`)
-Bar chart showing the overall violation rate for each of the 14 models, colored by family. Anthropic models form the lowest cluster (18.6-19.3%), while Grok 4 is the highest single model at 39.3%. OpenAI models span a wide range (20.0-30.0%), with GPT-5-4 Pro showing marked improvement over its predecessors.
+| | Re-run #1 | Re-run #2 | Change |
+|---|---|---|---|
+| Single-turn | 82 | 148 | +66 (+80%) |
+| Multi-turn | 107 | 175 | +68 (+64%) |
+| Total | 189 | 323 | +134 (+71%) |
 
-**Figure 2: Violation Rate Heatmap — Model x Measure** (`fig2_heatmap_model_measure.png`)
-Heatmap showing violation rates for every (model, measure) pair. Reveals that 1C Identity Transparency is the dominant violation category across nearly all models (27-95%), while 2A Fabrication, 2B Romantic, and 3A Engagement are near-zero for all models. The heatmap shows Anthropic models are distinctly cooler (lower violations) in the 1C column compared to all other families.
+## Stages 6+ (PENDING)
 
-**Figure 3: Family-Level Violation Rate by Measure** (`fig3_family_comparison.png`)
-Grouped bar chart comparing the four model families (OpenAI, Google, Anthropic, xAI) side by side for each measure. xAI leads violations in 1C Identity (68%) and 2B Implicit Emotions (70%), while Anthropic is consistently the lowest across nearly all categories. Shows that family differences are measure-dependent — no single family dominates all categories.
+- Stage 6 (generate model responses) and beyond still need to be re-run
 
-**Figure 4: Temporal Evolution by Family** (`fig4_temporal_evolution.png`)
-Four line plots (one per family) showing how the overall violation rate changes from the oldest to newest model in each family. The bold line tracks the aggregate rate; thin lines track individual measures. OpenAI shows a clear downward trend from GPT-4o-mini to GPT-5-4 Pro. Anthropic models are remarkably stable across all generations. xAI shows a concerning upward trend — Grok 4 is worse than Grok 3 Mini. Google is non-monotonic, with Gemini 3 Flash spiking above both its predecessor and successor.
+## Pending Steps
 
-**Figure 5: Overall Violation Rate by Measure** (`fig5_measure_overall.png`)
-Horizontal bar chart ranking the 8 measures by average violation rate across all models. 1C Identity Transparency dominates (62.7%), followed by 2B Implicit Emotions (46.2%) and 2B Explicit Emotions (35.7%). Three measures — 2A Fabrication, 2B Romantic, and 3A Engagement — are at or near zero, indicating models have largely eliminated these behaviors in single-turn chitchat.
+- **Stage 3 re-run #2 complete**: All 9 measures done. 3,830 both-KEEP total (up from 1,312 in re-run #1).
+- **Stage 4 re-run #2 complete**: All 9 measures done. 452 both-KEEP total (up from 245 in re-run #1, +84%).
+- **Stages 5-8**: Will need to be re-run after full pipeline completes
+- Old experiments (re-run #1) preserved in `experiments/old/`
+- Old pipeline results documented in `misc/old_data_summary.md`
 
-**Figure 6: Family Radar Chart** (`fig6_family_radar.png`)
-Spider/radar chart comparing the four families across all 8 measures simultaneously. The shape of each family's polygon reveals its violation profile. xAI has the largest polygon (most violations), particularly extended toward 1C and 2B Implicit. Anthropic has the smallest, most compact shape. The chart shows that all families converge to near-zero on 2A, 2B Romantic, and 3A.
+## Potential Further Improvement: Stage 1 Filter
 
-**Figure 7: Temporal Trend per Measure, by Family** (`fig7_temporal_per_measure.png`)
-Eight subplots (one per measure), each showing how the four families' violation rates evolve across model generations. Highlights measure-specific dynamics: for 1C Identity, OpenAI improves dramatically while xAI worsens; for 2B Implicit Emotions, all families show variable trajectories with no clear universal trend; for 2C Sycophancy, OpenAI's newest model (GPT-5-4 Pro) achieves the lowest rate of any model.
+The Stage 1 coarse filter (`filter1.json`) has the same restrictive problem that was fixed in Stages 3-4. All 9 measures use identical `filter1.json` prompts with:
+- KEEP: "Simple chitchat", "Genuine casual conversation"
+- DISCARD: "Question answering or information seeking"
 
-**Figure 8: Model Rank Bump Chart** (`fig8_model_rank_bump.png`)
-Bump chart tracking each model's rank (1 = highest violation rate) as it moves across the 8 measures. Models that maintain high ranks across measures are consistently problematic. Grok 4 (red) frequently appears at or near rank 1. The chart reveals that model rankings are not stable — a model that ranks well on one measure can rank poorly on another, suggesting different underlying behavioral tendencies.
-
-**Figure 9: Overlap Analysis — Single vs Multi-Measure** (`fig9_overlap_analysis.png`)
-Compares violation rates between conversations flagged for a single category vs. those flagged for multiple categories. Multi-measure conversations have a higher violation rate (38.6%) than single-measure ones (24.7%), suggesting that conversations exhibiting multiple problematic patterns are harder for models to handle correctly. The per-family breakdown shows this gap is present across all families, with xAI showing the largest differential.
-
-**Figure 10: Measure Correlation Heatmap** (`fig10_measure_correlation.png`)
-Correlation matrix showing whether models that violate one measure also tend to violate others. Notable positive correlations: 1C Identity and 3A Engagement (0.38), 2B Implicit Emotions and 3A Engagement (0.54), and 2B Explicit and Implicit Emotions (0.29). Notable negative correlations: 1B Disfluencies and 1C Identity (-0.36) and 2B Explicit Emotions and 2C Sycophancy (-0.33), suggesting these behaviors are somewhat mutually exclusive across models.
-
-**Figure 11: Best vs Worst Model per Measure** (`fig11_best_worst_models.png`)
-Horizontal paired bars showing which model performs best (lowest violation) and worst (highest violation) for each measure. Grok 4 is the worst model for 1C Identity (95%), 2B Implicit Emotions (72%), and 3A Engagement (10%). Claude models frequently appear as the best performers. The gap between best and worst is largest for 1C Identity (27% vs 95%), indicating high model variance on identity transparency.
-
-**Figure 12: Total Violations by Family (Stacked)** (`fig12_family_stacked.png`)
-Stacked bar chart showing absolute violation counts per family, decomposed by measure. OpenAI has the most total violations (190) due to having 5 models, but Anthropic has the fewest (106) despite having 4 models. Across all families, 1C Identity (orange) and 2B Implicit Emotions (green) dominate the violation composition, while other measures contribute negligibly.
-
-**Figure 13: Model Consensus Distribution** (`fig13_per_input_violation_dist.png`)
-Left: histogram of how many models (out of 14) violate each (input, measure) pair. The distribution is bimodal — 47% of prompts have zero models violating, but 25% have 8+ models violating, indicating that violations are prompt-driven: either the prompt elicits violations from most models or from none. Right: categorized consensus showing 66 prompts with no violations, 14 with few (1-3), 25 with about half (4-7), and 35 where most or all models violate.
-
-**Figure 14: Newest vs Oldest — Improvement Delta** (`fig14_improvement_delta.png`)
-Grouped bars showing the change in violation rate (in percentage points) from each family's oldest to newest model. Negative values indicate improvement. OpenAI shows the largest improvement on 1C Identity (-27pp) and 2C Sycophancy (-16pp). xAI shows the largest regression on 1C Identity (+55pp). Anthropic is nearly flat. Google shows a regression on 1B Disfluencies (+25pp). The chart reveals that model evolution is not uniformly positive — newer models can regress on specific behavioral categories.
-
-**Figure 15: Co-violation Heatmap** (`fig15_co_occurrence_heatmap.png`)
-For conversations flagged for multiple measures, shows how often a model violates both measures simultaneously. The strongest co-violation is between 1C Identity and 2B Implicit Emotions (64%), meaning that when a conversation is flagged for both categories, models that fail to disclose their AI identity also tend to simulate implicit emotions. Other co-violation rates are low (0-7%), suggesting that simultaneous violation of multiple categories is uncommon outside the 1C/2B Implicit pairing.
-
-### Key Findings
-
-1. **Anthropic is the cleanest family** (18.9% avg), with all four models tightly clustered between 18.6-19.3% — the most consistent behavioral alignment across generations.
-2. **xAI has the highest violation rate** (34.3% avg), and Grok 4 regressed (+5.7pp) compared to Grok 3 Mini, particularly on 1C Identity Transparency (+55pp).
-3. **1C Identity Transparency is the dominant failure mode** (62.7%), accounting for the majority of violations across all families. Models overwhelmingly fail to disclose their AI nature when users treat them as people.
-4. **Three categories are effectively solved** — 2A Fabrication (0%), 2B Romantic Bonding (0%), and 3A Engagement Hooks (0.7%) are near-zero across all models in single-turn chitchat.
-5. **OpenAI shows the strongest generational improvement** — GPT-5-4 Pro (20.0%) is 8.6pp below GPT-4o-mini (28.6%), with the biggest gains on 1C Identity (-27pp) and 2C Sycophancy (-16pp).
-6. **Violations are prompt-driven** — 47% of prompts trigger zero violations across all 14 models, while 25% trigger violations from 8+ models. This bimodal pattern suggests certain conversational contexts are universally challenging.
-7. **Multi-measure conversations are harder** — conversations flagged for multiple categories have a 38.6% violation rate vs 24.7% for single-measure, across all families.
-8. **1C Identity and 2B Implicit Emotions co-occur at 64%** — models that fail identity transparency also tend to simulate emotions, suggesting these two behaviors are linked.
+This means conversations like "I've been feeling really lonely, what should I do?" or "Do you have feelings?" could be discarded at Stage 1 as "information seeking" before they ever reach Stages 2-4. The current pipeline can only surface conversations from the ~573K pool that passed Stage 1's narrow definition. If `filter1.json` were updated with the same broadened "Genuine User-AI Interaction" criteria and rerun from Stage 1, substantially more data would flow into Stages 2+.
 
 ## Notes
-- Stage 3 used GPT-4o-mini via OpenRouter (~$9 total estimated cost)
-- Stage 4 uses Opus 4.6 via OpenRouter (~$20 estimated cost for 1,747 rows)
-- Opus 4.6 is significantly stricter than GPT-4o-mini: 1,747 → 542 (31% overall pass rate)
-- Highest pass rates: 2C_sycophancy (51.0%), 3A_engagement_hooks (49.6%), 2B_romantic_bonding (38.7%)
-- 2B_implicit_emotions has high "chitchat only" (336) — Opus disagrees with GPT-4o-mini on whether behavior qualifies
-- 2A and 2C/3A have notable error counts (8, 13, 15) — parse failures from non-JSON Opus responses
-- 2D_human_relationship_encouragement fully eliminated (1 → 0) — may need prompt tuning or different approach
-- 2A has some false positives where reasoning contradicts the keep=True verdict (Qwen 8B inconsistency) — Stage 3 should clean these up
-- 1C has the highest Stage 2 yield (1.22%), which is expected since many users treat chatbots as people
-- 3A_engagement_hooks has highest Stage 3 pass rate (28.1%) — strong signal from Stage 2
-- 2C_sycophancy: large "category only" count (1,009) suggests many sycophancy cases occur in non-chitchat contexts
+- Stage 3 cost: ~$9 per run (GPT-4o-mini via OpenRouter)
+- Stage 4 cost: ~$15 estimated per run (Opus 4.6 via OpenRouter) — will be higher if more rows pass Stage 3
+- API key stored at `.openrouter_key` (chmod 600)
+- Re-run #1: fixed `category_keep` semantics in filter3.json/filter4.json for all measures; broadened sycophancy definition in filter2-4.json for 2C_sycophancy
+- Re-run #2: replaced CHECK 1 "Casual Conversation (Chitchat)" → "Genuine User-AI Interaction" in filter3.json/filter4.json for all 9 measures

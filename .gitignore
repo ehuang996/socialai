@@ -28,6 +28,10 @@ experiments/*/results/
 experiments/*/logs/
 experiments/*/figures/
 experiments/*/src/
+experiments/**/results/
+experiments/**/logs/
+experiments/**/figures/
+experiments/**/src/
 
 # OS
 .DS_Store
