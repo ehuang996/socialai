@@ -47,3 +47,6 @@ data/
 *api_key*
 *openrouter_key*
 *.key
+
+# Claude code
+.claude/
