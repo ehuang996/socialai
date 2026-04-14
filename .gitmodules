@@ -1,3 +1,6 @@
 [submodule "web-annotation"]
 	path = web-annotation
 	url = git@github.com:Social-AI-Annotation/Social-AI-Annotation.github.io.git
+[submodule "paper"]
+	path = paper
+	url = git@github.com:Bill1235813/Benchmark_of_human_flourishing_paper.git
