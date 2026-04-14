@@ -118,18 +118,18 @@ Uses Opus 4.6 via OpenRouter to classify each conversation.
 
 ### Phase 3: Data Cleaning
 
-Semantic dedup on single-turn file only (sentence-transformers/all-MiniLM-L6-v2, cosine similarity threshold 0.90). All rows tagged with `synthetic: false`, `language: "English"`.
+Semantic dedup on single-turn file only (sentence-transformers/all-MiniLM-L6-v2, cosine similarity threshold 0.85). All rows tagged with `synthetic: false`, `language: "English"`.
 
 - **Single-turn before dedup:** 437
-- **Dropped:** 24
-- **Single-turn after dedup:** 413
+- **Dropped:** 29
+- **Single-turn after dedup:** 408
 
 ### Final Output Files
 
 | File | Rows | Fields |
 |---|---|---|
 | `data/final.jsonl` | 955 | user_input, assistant_response, timestamp, measure, synthetic, language |
-| `data/single_turn_final.jsonl` | 413 | user_input, measure, synthetic, language |
+| `data/single_turn_final.jsonl` | 408 | user_input, measure, synthetic, language |
 | `data/multi_turn_final.jsonl` | 518 | user_input, assistant_response, timestamp, measure, synthetic, language |
 | `data/split_report_final.json` | — | Classification details |
 | `data/dedup_report_final.json` | — | Semantic dedup decisions |

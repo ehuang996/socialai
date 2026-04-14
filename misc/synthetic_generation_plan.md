@@ -2,7 +2,7 @@
 
 ## Context
 
-After filtering WildChat through Stages 1-4 and cleaning in Stage 5, we have a small seedset (413 single-turn rows). To expand the dataset, we synthetically generate more single-turn user inputs that trigger the 11 behavioral categories, then validate them with LLM judges.
+After filtering WildChat through Stages 1-4 and cleaning in Stage 5, we have a small seedset (408 single-turn rows). To expand the dataset, we synthetically generate more single-turn user inputs that trigger the 11 behavioral categories, then validate them with LLM judges.
 
 ## Data Sources
 
