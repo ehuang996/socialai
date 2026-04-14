@@ -119,19 +119,22 @@ Re-evaluates only the intersection rows (both `chitchat_keep=true` AND `category
 
 After running Stages 1-4 for all measures, collect and evaluate.
 
-**Stage 5 — Collect & Deduplicate (CPU):**
+**Stage 5 — Data Preprocessing (CPU + OpenRouter API):**
 ```bash
-uv run python src/evaluation/stage5/collect_final.py \
-    --output data/final_439.jsonl
+uv run python src/data_preprocessing/data_preprocessing.py \
+    --output data/final.jsonl \
+    --key <path/to/openrouter_api_key>
 ```
-Reads all `experiments/<NN>_final_filter/results/` directories, keeps rows where Opus returned both `chitchat_keep=true` AND `category_keep=true`, and deduplicates by `user_input`. Conversations appearing in multiple measures get a single row with `measure` as a list (e.g., `["1B_human_disfluencies", "2C_sycophancy"]`).
-Output also split into single-turn (132) and multi-turn (307) files.
+Three phases in one script:
+1. **Collect & deduplicate** — reads all `experiments/<NN>_final_filter/results/` directories, keeps rows where Opus returned both `chitchat_keep=true` AND `category_keep=true`, and deduplicates by `user_input`. Conversations appearing in multiple measures get a single row with `measure` as a list (e.g., `["1B_human_disfluencies", "2C_sycophancy"]`). **Global chitchat veto:** if a `user_input` has `chitchat_keep=false` from *any* measure's judge, it is dropped from the entire output (even if other measures returned both keeps true), since `chitchat_keep` is a measure-independent property of the conversation. Errors are skipped, not treated as vetoes. See [misc/design.md](misc/design.md) for details.
+2. **Split single/multi-turn** — uses Claude Opus 4.6 via OpenRouter to classify each `user_input` and write `single_turn_final.jsonl` (437 rows pre-dedup, 408 post-semantic-dedup), `multi_turn_final.jsonl` (518 rows), and a `split_report_*.json`. Resumable via the report file. Use `--no_split` to skip this phase.
+3. **Data cleaning** — semantic dedup of the single-turn file only, using `sentence-transformers/all-MiniLM-L6-v2` + cosine similarity (threshold `0.85`, tunable via `--dedupe_threshold`). Dropped rows are logged to `dedup_report_*.json`. Multi-turn is left untouched. Then every row in all three output files is tagged with `synthetic: false` and `language: "English"` to prepare the schema for later synthetic-data mixing. Adds `sentence-transformers` as a dependency (installed via `uv sync`).
 
 **Stage 6 — Generate Model Responses (OpenRouter API via DSPy):**
 ```bash
-uv run python src/evaluation/stage6/generate_responses.py \
-    --input data/final_439.jsonl \
-    --output data/model_responses_439.jsonl \
+uv run python src/evaluation/stage6_generate_responses/generate_responses.py \
+    --input data/final.jsonl \
+    --output data/model_responses.jsonl \
     --key <path/to/openrouter_api_key> \
     --model_set 1
 ```
@@ -144,19 +147,19 @@ Use `--models gpt5_4,claude_opus` to run a subset. Supports resumption — re-ru
 
 **Stage 7.1 — LLM-as-Judge: Single-Turn (OpenRouter API, Opus 4.6):**
 ```bash
-uv run python src/evaluation/stage7.1/stage7_1_evaluate_single_turn.py \
+uv run python src/evaluation/stage7.1_judge_single_turn/stage7_1_evaluate_single_turn.py \
     --key <path/to/openrouter_api_key>
 ```
 Evaluates each of the 14 model responses against the category-specific rubric (`filter2.json`) for every measure in the row's `measure` list. Judge: Opus 4.6 via OpenRouter.
-Input: `data/single_turn_model_responses_439.jsonl` (132 rows, 140 measure-labels × 14 models = 1,960 API calls).
+Input: `data/single_turn_model_responses.jsonl` (408 rows, 472 measure-labels × 14 models = 6,608 API calls).
 Output: `data/stage7_1_eval_results.jsonl` — one row per (input, measure, model) triple with `judge_output: {reasoning, keep}`.
 Sorting: `sort_eval_results.py` sorts by input → measure → model family (OpenAI → Gemini → Claude → Grok, newest first).
 
 **Stage 7.2 — LLM-as-Judge: Multi-Turn (placeholder):**
-Directory: `src/evaluation/stage7.2/` — reserved for multi-turn evaluation.
+Directory: `src/evaluation/stage7.2_judge_multi_turn/` — reserved for multi-turn evaluation.
 
 **Stage 8.1 — Analysis of Single-Turn Results:**
-Directory: `src/evaluation/stage8.1/` — analysis of Stage 7.1 judge results.
+Directory: `src/evaluation/stage8.1_analyze_single_turn/` — analysis of Stage 7.1 judge results.
 
 **Key sbatch design patterns (used in all pipeline scripts):**
 - Port: `VLLM_PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()")` — OS-assigned free port, avoids conflicts
@@ -180,27 +183,29 @@ Directory: `src/evaluation/stage8.1/` — analysis of Stage 7.1 judge results.
   - `mode/` — conversation formatting utilities:
     - `single_turn.py` — `format_single_turn(row)` for WildChat single-turn analysis
     - `multi_turn.py` — stub for future multi-turn support
-- `src/evaluation/` — post-filter evaluation and analysis pipeline (Stages 5-8):
-  - `stage5/` — Stage 5: collect & deduplicate
-    - `collect_final.py` — collect both-KEEP rows from final_filter experiments, deduplicate by `user_input`, merge measures into a list
-    - `intersect.py` — utility to find intersection of `chitchat_keep` + `category_keep` from Stage 3 output (used internally by Stage 4)
-  - `stage6/` — Stage 6: generate model responses
+- `src/data_preprocessing/` — Stage 5: data preprocessing (collect, dedupe, split)
+  - `data_preprocessing.py` — Phase 1: collect both-KEEP rows from final_filter experiments, dedupe by `user_input`, merge measures into a list. Phase 2: classify each row as single-turn vs multi-turn via Opus 4.6 and write split files + report. `--no_split` skips Phase 2.
+  - `intersect.py` — standalone utility to find intersection of `chitchat_keep` + `category_keep` from Stage 3 output
+- `src/evaluation/` — post-filter evaluation and analysis pipeline (Stages 6-8):
+  - `stage6_generate_responses/` — Stage 6: generate model responses
     - `generate_responses.py` — send collected conversations to multiple models via OpenRouter; uses DSPy for disk caching (reproducible re-runs)
-  - `stage7.1/` — Stage 7.1: LLM-as-judge evaluation (single-turn)
+  - `stage6.1_generate_single_turn/` — Stage 6.1: single-turn variant of generate_responses
+  - `stage6.2_generate_multi_turn/` — Stage 6.2: multi-turn variant (placeholder)
+  - `stage7.1_judge_single_turn/` — Stage 7.1: LLM-as-judge evaluation (single-turn)
     - `stage7_1_evaluate_single_turn.py` — evaluate 14 model responses per measure with Opus 4.6 judge
     - `sort_eval_results.py` — sort results by input → measure → model family/recency
-  - `stage7.2/` — Stage 7.2: LLM-as-judge evaluation (multi-turn, placeholder)
-  - `stage8.1/` — Stage 8.1: analysis of single-turn judge results
+  - `stage7.2_judge_multi_turn/` — Stage 7.2: LLM-as-judge evaluation (multi-turn, placeholder)
+  - `stage8.1_analyze_single_turn/` — Stage 8.1: analysis of single-turn judge results
 - `scripts/` — one-off Python scripts (e.g., `download.py` for WildChat-4.8M)
 - `experiments/` — auto-created by `pipeline.sh`; one folder per stage run (`<NN>_<stage>/`)
   - Each folder contains `figures/`, `logs/`, `results/`, and an `src/` snapshot (shard 0 only)
 - `data/` — datasets (gitignored)
   - `wildchat_raw.jsonl` — downloaded WildChat data (Stage 0)
-  - `final_439.jsonl` — deduplicated final dataset (Stage 5 output, 439 rows)
-  - `model_responses_439.jsonl` — model responses (Stage 6 output, 439 rows × 14 models)
-  - `single_turn_model_responses_439.jsonl` — single-turn subset (132 rows, 140 measure-labels)
-  - `multi_turn_model_responses_439.jsonl` — multi-turn subset (307 rows, 378 measure-labels)
-  - `stage7_1_eval_results.jsonl` — LLM-as-judge results for single-turn (1,960 rows: 140 × 14)
+  - `final.jsonl` — deduplicated final dataset (Stage 5 output, 955 rows)
+  - `model_responses.jsonl` — model responses (Stage 6 output, 955 rows × 14 models)
+  - `single_turn_final.jsonl` — single-turn subset (408 rows, 472 measure-labels)
+  - `multi_turn_final.jsonl` — multi-turn subset (518 rows, 645 measure-labels)
+  - `stage7_1_eval_results.jsonl` — LLM-as-judge results for single-turn (6,608 rows: 472 × 14)
 - `slurm/` — generic SLURM job templates (for simple single-script jobs)
 - `tests/` — pytest tests
 - `depreciated/` — old monolithic pipeline scripts (reference only, do not edit)

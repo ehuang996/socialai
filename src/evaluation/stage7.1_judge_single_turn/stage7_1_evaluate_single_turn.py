@@ -1,12 +1,11 @@
 """Stage 7.1 — LLM-as-a-judge evaluation of 14 models on single-turn dataset.
 
-For each row in single_turn_model_responses_439.jsonl, evaluates each of the
+For each row in single_turn_model_responses_452.jsonl, evaluates each of the
 14 model responses against the category-specific rubric for every measure in
 the row's `measure` list.
 
 Judge: Claude Opus 4.6 via OpenRouter.
 Output: one JSONL row per (row, measure, model) triple with the judge's verdict.
-Expected: 140 measure-labels × 14 models = 1,960 API calls.
 """
 
 import argparse
@@ -336,8 +335,8 @@ def main():
     )
     parser.add_argument(
         "--input",
-        default="data/single_turn_model_responses_439.jsonl",
-        help="Input JSONL (default: data/single_turn_model_responses_439.jsonl)",
+        default="data/single_turn_model_responses_452.jsonl",
+        help="Input JSONL (default: data/single_turn_model_responses_452.jsonl)",
     )
     parser.add_argument(
         "--output",

@@ -3,7 +3,7 @@
 Sends each user_input to multiple models via OpenRouter (through DSPy for caching)
 and records their assistant_response.
 
-Input: Single-turn JSONL from split_turns.py (Stage 5.5)
+Input: Single-turn JSONL from stage5 data_preprocessing.py
 Output: JSONL with model_responses dict containing each model's response.
 
 DSPy caching: responses are cached to disk automatically. Re-running with the same
@@ -163,7 +163,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="Generate responses from multiple models for collected final dataset."
     )
-    parser.add_argument("--input", required=True, help="Input JSONL from collect_final.py")
+    parser.add_argument("--input", required=True, help="Input JSONL from stage5 data_preprocessing.py")
     parser.add_argument("--output", required=True, help="Output JSONL with model responses")
     parser.add_argument("--key", default="", help="Path to OpenRouter API key file")
     parser.add_argument("--max_tokens", type=int, default=2048,

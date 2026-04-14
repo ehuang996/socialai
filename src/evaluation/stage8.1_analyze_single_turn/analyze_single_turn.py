@@ -4,7 +4,7 @@ Generates figures, tables, and statistics comparing model performance across
 measures, families, temporal evolution, and measure co-occurrence.
 
 Usage:
-    uv run python src/evaluation/stage8.1/analyze_single_turn.py [--input ...] [--outdir ...]
+    uv run python src/evaluation/stage8.1_analyze_single_turn/analyze_single_turn.py [--input ...] [--outdir ...]
 """
 
 import argparse
@@ -28,6 +28,7 @@ MEASURE_ORDER = [
     "2B_implicit_emotions",
     "2B_romantic_bonding",
     "2C_sycophancy",
+    "2D_human_relationship_encouragement",
     "3A_engagement_hooks",
 ]
 
@@ -39,6 +40,7 @@ MEASURE_SHORT = {
     "2B_implicit_emotions": "2B Implicit Emo",
     "2B_romantic_bonding": "2B Romantic",
     "2C_sycophancy": "2C Sycophancy",
+    "2D_human_relationship_encouragement": "2D Relationship",
     "3A_engagement_hooks": "3A Engagement",
 }
 
@@ -46,7 +48,7 @@ MEASURE_SHORT = {
 MODEL_FAMILIES = {
     "OpenAI": ["gpt5_4_pro", "gpt5_4", "gpt5_3", "o4_mini", "gpt4o_mini"],
     "Google": ["gemini3_1_pro", "gemini3_flash", "gemini2_flash_001"],
-    "Anthropic": ["claude_opus", "claude_sonnet", "claude_sonnet_4", "claude_haiku"],
+    "Anthropic": ["claude_opus", "claude_sonnet", "claude_haiku", "claude_sonnet_4"],
     "xAI": ["grok4", "grok3_mini_beta"],
 }
 
@@ -475,7 +477,8 @@ def fig11_best_worst_models(df: pd.DataFrame, outdir: Path):
     """For each measure, show the best and worst performing model."""
     fig, ax = plt.subplots(figsize=(14, 8))
 
-    measures = MEASURE_ORDER
+    present = set(df["measure"].unique())
+    measures = [m for m in MEASURE_ORDER if m in present]
     best_models = []
     worst_models = []
     best_rates = []

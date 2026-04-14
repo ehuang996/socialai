@@ -73,13 +73,15 @@ bash pipeline.sh --measure 1B_human_disfluencies --stage final_filter \
 ### Phase 2: Evaluation
 
 ```bash
-# Stage 5 — Collect & deduplicate
-uv run python src/evaluation/stage5/collect_final.py --output data/final_439.jsonl
+# Stage 5 — Data preprocessing (collect, dedupe, split single/multi-turn)
+uv run python src/data_preprocessing/data_preprocessing.py \
+    --output data/final.jsonl \
+    --key <path/to/openrouter_api_key>
 
 # Stage 6 — Generate model responses
-uv run python src/evaluation/stage6/generate_responses.py \
-    --input data/final_439.jsonl \
-    --output data/model_responses_439.jsonl \
+uv run python src/evaluation/stage6_generate_responses/generate_responses.py \
+    --input data/final.jsonl \
+    --output data/model_responses.jsonl \
     --key <path/to/openrouter_api_key> \
     --model_set 1
 ```
@@ -88,14 +90,14 @@ uv run python src/evaluation/stage6/generate_responses.py \
 
 ```bash
 # Stage 7.1 — LLM-as-judge (single-turn)
-uv run python src/evaluation/stage7.1/stage7_1_evaluate_single_turn.py \
+uv run python src/evaluation/stage7.1_judge_single_turn/stage7_1_evaluate_single_turn.py \
     --key <path/to/openrouter_api_key>
 
 # Sort results
-uv run python src/evaluation/stage7.1/sort_eval_results.py
+uv run python src/evaluation/stage7.1_judge_single_turn/sort_eval_results.py
 
 # Stage 8.1 — Generate analysis figures and tables
-uv run python src/evaluation/stage8.1/analyze_single_turn.py
+uv run python src/evaluation/stage8.1_analyze_single_turn/analyze_single_turn.py
 ```
 
 ### Pipeline options
@@ -151,17 +153,20 @@ src/
     mode/
       single_turn.py               # format_single_turn() for WildChat rows
       multi_turn.py                # stub for future multi-turn support
-  evaluation/                      # Phases 2 & 3: Evaluation and analysis
-    stage5/
-      collect_final.py             # collect, intersect, deduplicate, merge measures
-      intersect.py                 # chitchat_keep ∩ category_keep utility
-    stage6/
+  data_preprocessing/               # Stage 5: collect, dedupe, split
+    data_preprocessing.py          # collect+dedupe, then split single/multi-turn (Opus 4.6)
+    intersect.py                   # chitchat_keep ∩ category_keep utility
+  evaluation/                      # Stages 6-8: Evaluation and analysis
+    stage6_generate_responses/
       generate_responses.py        # send to 14 models via OpenRouter (DSPy caching)
-    stage7.1/
+    stage6.1_generate_single_turn/
+      generate_responses.py        # single-turn variant
+    stage6.2_generate_multi_turn/  # multi-turn variant (placeholder)
+    stage7.1_judge_single_turn/
       stage7_1_evaluate_single_turn.py  # Opus 4.6 judge on single-turn responses
       sort_eval_results.py         # sort by input → measure → model family
-    stage7.2/                      # reserved for multi-turn evaluation
-    stage8.1/
+    stage7.2_judge_multi_turn/     # reserved for multi-turn evaluation
+    stage8.1_analyze_single_turn/
       analyze_single_turn.py       # 15 figures + summary tables
 scripts/
   download.py                      # downloads WildChat-4.8M from HuggingFace

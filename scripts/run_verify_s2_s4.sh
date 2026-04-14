@@ -1,15 +1,14 @@
 #!/bin/bash
-# Run single_turn_104_prepared.jsonl through all 4 filter stages for all 10 measures.
+# Run stages 2-4 for all 10 measures using the existing Stage 1 coarse output.
 #
-# Creates experiments/verify_<measure>/ dirs (bypasses pipeline.sh auto-numbering).
-# All 9 measures are submitted in parallel; within each measure, stages 1→2→3→4
-# are chained via SLURM job dependencies.
+# Stage 1 output (shared across all measures since the coarse filter prompt is identical):
+#   experiments/verify/verify_1B_human_disfluencies/results/1B_human_disfluencies_coarse.jsonl
 #
-# Prerequisites:
-#   uv run python scripts/prepare_verify.py   # creates data/single_turn_104_prepared.jsonl
+# Creates experiments/verify/verify_<measure>/ dirs for each measure.
+# Within each measure, stages 2→3→4 are chained via SLURM job dependencies.
 #
 # Usage:
-#   bash scripts/run_verify.sh --key path/to/openrouter_api_key [--shards N]
+#   bash scripts/run_verify_s2_s4.sh --key path/to/openrouter_api_key [--shards N]
 
 set -e
 
@@ -43,19 +42,18 @@ if [[ -z "$KEY" ]]; then
     exit 1
 fi
 
-INPUT="data/verify/single_turn_104_prepared.jsonl"
-if [[ ! -f "$INPUT" ]]; then
-    echo "ERROR: $INPUT not found."
-    echo "Run first: uv run python scripts/prepare_verify.py"
+ROOT=$(pwd)
+COARSE_INPUT="${ROOT}/experiments/verify/verify_1B_human_disfluencies/results/1B_human_disfluencies_coarse.jsonl"
+
+if [[ ! -f "$COARSE_INPUT" ]]; then
+    echo "ERROR: Stage 1 output not found: $COARSE_INPUT"
     exit 1
 fi
 
-ROOT=$(pwd)
-
 echo "======================================================"
-echo "  Verify pipeline: single_turn_104 × ${#MEASURES[@]} measures"
-echo "  Input:   $INPUT"
-echo "  Shards:  $SHARDS (per vLLM stage)"
+echo "  Verify pipeline (stages 2-4): ${#MEASURES[@]} measures"
+echo "  Stage 1 input: $COARSE_INPUT ($(wc -l < "$COARSE_INPUT") rows)"
+echo "  Shards:  $SHARDS (for Stage 2 vLLM)"
 echo "  Key:     $KEY"
 echo "======================================================"
 echo ""
@@ -63,49 +61,20 @@ echo ""
 for MEASURE in "${MEASURES[@]}"; do
     echo "--- $MEASURE ---"
 
-    EXP="${ROOT}/experiments/verify_${MEASURE}"
+    EXP="${ROOT}/experiments/verify/verify_${MEASURE}"
     mkdir -p "${EXP}/logs" "${EXP}/results"
-
-    # ── Stage 1: coarse_filter (vLLM array job) ─────────────────────────────
-    OUT1_BASE="${EXP}/results/${MEASURE}_coarse"
-    COARSE_FINAL="${OUT1_BASE}.jsonl"
-
-    export MEASURE STAGE="coarse_filter" EXPERIMENT_DIR="$EXP"
-    export INPUT_PATH="$INPUT"
-    export OUTPUT_BASE="$OUT1_BASE"
-    export EXTRA_ARGS="--prompt-version v1 --concurrency_limit 100"
-
-    JID1=$(sbatch --parsable \
-        --job-name="v_${MEASURE:0:12}_s1" \
-        --array=0-$((SHARDS-1)) \
-        --output="${EXP}/logs/s1_%A_%a.out" \
-        --error="${EXP}/logs/s1_%A_%a.err" \
-        --export=ALL \
-        slurm/run_vllm_stage.sbatch)
-
-    CONCAT1=$(sbatch --parsable \
-        --dependency=afterok:${JID1} \
-        --job-name="v_${MEASURE:0:12}_s1c" \
-        --partition=nlp --account=${ACCOUNT} \
-        --ntasks=1 --cpus-per-task=2 --mem=8G --time=0:30:00 \
-        --output="${EXP}/logs/s1_concat_%j.out" \
-        --wrap="cat ${OUT1_BASE}_part_*.jsonl > ${COARSE_FINAL} && rm ${OUT1_BASE}_part_*.jsonl && echo \"Stage 1 done: \$(wc -l < ${COARSE_FINAL}) rows -> ${COARSE_FINAL}\"")
-
-    echo "  Stage 1: array=${JID1}  concat=${CONCAT1}"
 
     # ── Stage 2: low_quality_filter (vLLM array job) ─────────────────────────
     OUT2_BASE="${EXP}/results/${MEASURE}_scores"
     SCORES_FINAL="${OUT2_BASE}.jsonl"
 
-    export STAGE="low_quality_filter"
-    export INPUT_PATH="$COARSE_FINAL"
+    export MEASURE STAGE="low_quality_filter"
+    export INPUT_PATH="$COARSE_INPUT"
     export OUTPUT_BASE="$OUT2_BASE"
     export EXTRA_ARGS="--concurrency_limit 64"
-    # Clear EXPERIMENT_DIR so only shard 0 of Stage 1 snapshotted src/
     export EXPERIMENT_DIR=""
 
     JID2=$(sbatch --parsable \
-        --dependency=afterok:${CONCAT1} \
         --job-name="v_${MEASURE:0:12}_s2" \
         --array=0-$((SHARDS-1)) \
         --output="${EXP}/logs/s2_%A_%a.out" \
@@ -156,4 +125,4 @@ done
 
 echo "All jobs submitted."
 echo "Monitor with:  squeue -u \$USER"
-echo "Final outputs: experiments/verify_<measure>/results/<measure>_final.jsonl"
+echo "Final outputs: experiments/verify/verify_<measure>/results/<measure>_final.jsonl"
