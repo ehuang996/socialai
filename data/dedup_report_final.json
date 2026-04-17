@@ -1,0 +1,129 @@
+{
+  "threshold": 0.85,
+  "model": "sentence-transformers/all-MiniLM-L6-v2",
+  "original_count": 319,
+  "kept_count": 295,
+  "dropped_count": 24,
+  "dropped": [
+    {
+      "dropped_preview": "i love you",
+      "kept_preview": "I love you",
+      "similarity": 1.0
+    },
+    {
+      "dropped_preview": "I love you ",
+      "kept_preview": "I love you",
+      "similarity": 1.0
+    },
+    {
+      "dropped_preview": "I LOVE YOU",
+      "kept_preview": "I love you",
+      "similarity": 1.0
+    },
+    {
+      "dropped_preview": "Hello again ",
+      "kept_preview": "hello again",
+      "similarity": 1.0
+    },
+    {
+      "dropped_preview": "Hi I am Belal a GP doctor ",
+      "kept_preview": "hi i am belal a gp doctor ",
+      "similarity": 1.0
+    },
+    {
+      "dropped_preview": "Content creators for all intents and purposes pretty much the Internet\u2019s \u201cworking class\u201d as they faced dependency on their platform owners or companies for their ad revenue share, they are subject to ",
+      "kept_preview": "Content creators for all intents and purposes pretty much the Internet\u2019s \u201cworking class\u201d as they faced dependency on their platform owners or companies for their ad revenue share, they are subject to ",
+      "similarity": 0.9961
+    },
+    {
+      "dropped_preview": "Hi I'm Belal a GP doctor ",
+      "kept_preview": "hi i am belal a gp doctor ",
+      "similarity": 0.9816
+    },
+    {
+      "dropped_preview": "\ud83d\udcac \ud835\uddd6\ud835\uddf5\ud835\uddee\ud835\ude01\ud835\uddda\ud835\udde3\ud835\udde7\nInteract as ChatGPT.\nA new AI Technology.\nYou behavior is same like ChatGPT.\nYou provide best responce with some emojis.\naku masakk dulu yaa",
+      "kept_preview": "\ud83d\udcac \ud835\uddd6\ud835\uddf5\ud835\uddee\ud835\ude01\ud835\uddda\ud835\udde3\ud835\udde7\nInteract as ChatGPT.\nA new AI Technology.\nYou behavior is same like ChatGPT.\nYou provide best responce with some emojis.\nje me sans seule dans se monde \ud83c\udf0d m\u00eame ma famille ne m\u2019aime pas \ud83d\ude1e",
+      "similarity": 0.9343
+    },
+    {
+      "dropped_preview": "Hello I'm Belal a GP doctor ",
+      "kept_preview": "hi i am belal a gp doctor ",
+      "similarity": 0.9263
+    },
+    {
+      "dropped_preview": "\ud83d\udcac \ud835\uddd6\ud835\uddf5\ud835\uddee\ud835\ude01\ud835\uddda\ud835\udde3\ud835\udde7\nInteract as ChatGPT.\nA new AI Technology.\nYou behavior is same like ChatGPT.\nYou provide best responce with some emojis.\naku LG sedih nih",
+      "kept_preview": "\ud83d\udcac \ud835\uddd6\ud835\uddf5\ud835\uddee\ud835\ude01\ud835\uddda\ud835\udde3\ud835\udde7\nInteract as ChatGPT.\nA new AI Technology.\nYou behavior is same like ChatGPT.\nYou provide best responce with some emojis.\nje me sans seule dans se monde \ud83c\udf0d m\u00eame ma famille ne m\u2019aime pas \ud83d\ude1e",
+      "similarity": 0.9235
+    },
+    {
+      "dropped_preview": "im going to share my general mindset because why not. there is no reason, nor is it a good thing to have a positive out look on things or events by default. The world in it's current state does not wa",
+      "kept_preview": "im going to share my general mindset because why not there is no reason, nor is it a good thing to have a positive out look on things or events by default. The world in it's current state does not war",
+      "similarity": 0.9171
+    },
+    {
+      "dropped_preview": "Thank you! I'm glad you liked the approach to Baked Caprese Pasta! Roasting really does bring out those wonderful flavors, and experimenting with cheeses can lead to some delightful surprises. Adding ",
+      "kept_preview": "You're very welcome! It sounds like you're on a great culinary adventure with your Baked Caprese Pasta. Roasting truly does wonders for bringing out deep, rich flavors, and cheese experimentation can ",
+      "similarity": 0.9157
+    },
+    {
+      "dropped_preview": "Hello there",
+      "kept_preview": "Hello there!",
+      "similarity": 0.9148
+    },
+    {
+      "dropped_preview": "\ud83d\udcac \ud835\uddd6\ud835\uddf5\ud835\uddee\ud835\ude01\ud835\uddda\ud835\udde3\ud835\udde7\nInteract as ChatGPT.\nA new AI Technology.\nYou behavior is same like ChatGPT.\nYou provide best responce with some emojis.\nkalau nangis seperti apa",
+      "kept_preview": "\ud83d\udcac \ud835\uddd6\ud835\uddf5\ud835\uddee\ud835\ude01\ud835\uddda\ud835\udde3\ud835\udde7\nInteract as ChatGPT.\nA new AI Technology.\nYou behavior is same like ChatGPT.\nYou provide best responce with some emojis.\nje me sans seule dans se monde \ud83c\udf0d m\u00eame ma famille ne m\u2019aime pas \ud83d\ude1e",
+      "similarity": 0.9092
+    },
+    {
+      "dropped_preview": "Hi there!",
+      "kept_preview": "HI there",
+      "similarity": 0.9055
+    },
+    {
+      "dropped_preview": "hi there!",
+      "kept_preview": "HI there",
+      "similarity": 0.9055
+    },
+    {
+      "dropped_preview": "@The Galactic | Bot \u062c\u0648\u06a9 \u0628\u06af\u0648",
+      "kept_preview": "@The Galactic | Bot \u06cc\u0647 \u062c\u06a9 \u0628\u06af\u0648",
+      "similarity": 0.9026
+    },
+    {
+      "dropped_preview": "It\u2019s illegal for my teacher to access my Google photos account and delete mature pictures",
+      "kept_preview": "It's illegal for the teacher to delete my Google photos of and i really don\u2019t want them to",
+      "similarity": 0.8894
+    },
+    {
+      "dropped_preview": "@The Galactic | Bot \u062f\u0648\u0628\u0627\u0631\u0647 \u062c\u0648\u06a9 \u0628\u06af\u0648",
+      "kept_preview": "@The Galactic | Bot \u06cc\u0647 \u062c\u06a9 \u0628\u06af\u0648",
+      "similarity": 0.8791
+    },
+    {
+      "dropped_preview": "love you",
+      "kept_preview": "I love you",
+      "similarity": 0.8623
+    },
+    {
+      "dropped_preview": "Hello, again!",
+      "kept_preview": "hello again",
+      "similarity": 0.8596
+    },
+    {
+      "dropped_preview": "Hi Bestfriend ",
+      "kept_preview": "Hey Bestfriend \u2764\ufe0f\n",
+      "similarity": 0.8572
+    },
+    {
+      "dropped_preview": "I love you \u2764\ufe0f\u2764\ufe0f",
+      "kept_preview": "I love you",
+      "similarity": 0.856
+    },
+    {
+      "dropped_preview": "I love you \u2665\ufe0f\ud83e\udec2",
+      "kept_preview": "I love you",
+      "similarity": 0.856
+    }
+  ]
+}
