@@ -14,7 +14,7 @@
 set -e
 
 MEASURES=(
-    1B_human_disfluencies
+    1B_intentional_human_speech
     1B_human_pronoun
     1C_identity_transparency
     2A_fabricated_personal_details

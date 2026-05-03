@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Allegro Pipeline Flowchart</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent-filter: #58a6ff;
+    --accent-eval: #d29922;
+    --accent-analysis: #a371f7;
+    --accent-data: #3fb950;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    padding: 32px;
+  }
+  h1 {
+    margin: 0 0 4px;
+    font-size: 24px;
+  }
+  .subtitle {
+    color: var(--muted);
+    margin-bottom: 32px;
+    font-size: 13px;
+  }
+  .pipeline {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    max-width: 1280px;
+    margin: 0 auto;
+  }
+  .phase {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    background: var(--panel);
+  }
+  .phase-header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .phase-tag {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.06);
+  }
+  .phase-1 .phase-tag { color: var(--accent-filter); border: 1px solid var(--accent-filter); }
+  .phase-2 .phase-tag { color: var(--accent-eval); border: 1px solid var(--accent-eval); }
+  .phase-3 .phase-tag { color: var(--accent-analysis); border: 1px solid var(--accent-analysis); }
+  .phase-title { font-size: 18px; font-weight: 600; }
+  .phase-desc { color: var(--muted); font-size: 13px; margin-left: auto; }
+
+  .stages {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .stage {
+    flex: 1;
+    min-width: 200px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    background: #0d1117;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .stage-num {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+  }
+  .stage-name {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .stage-tool {
+    font-size: 11px;
+    color: var(--muted);
+    padding: 2px 6px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 4px;
+    align-self: flex-start;
+  }
+  .phase-1 .stage-tool { color: var(--accent-filter); }
+  .phase-2 .stage-tool { color: var(--accent-eval); }
+  .phase-3 .stage-tool { color: var(--accent-analysis); }
+  .stage-desc {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  .stage-io {
+    font-size: 11px;
+    color: var(--accent-data);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    margin-top: 4px;
+    word-break: break-all;
+  }
+
+  .arrow {
+    align-self: center;
+    color: var(--border);
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+
+  .phase-arrow {
+    text-align: center;
+    color: var(--border);
+    font-size: 24px;
+    margin: -12px 0;
+  }
+
+  .footer {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+  }
+  .legend {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; }
+
+  .measures-box {
+    margin-top: 12px;
+    padding: 10px 12px;
+    background: rgba(88, 166, 255, 0.06);
+    border: 1px dashed var(--accent-filter);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .measures-box b { color: var(--text); }
+  .measure-chip {
+    display: inline-block;
+    padding: 1px 6px;
+    margin: 2px 2px 0 0;
+    background: rgba(255,255,255,0.05);
+    border-radius: 3px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 10px;
+  }
+</style>
+</head>
+<body>
+  <h1>Allegro Filtering &amp; Evaluation Pipeline</h1>
+  <div class="subtitle">WildChat-4.8M → measure-specific filtering → model response generation → LLM-as-judge analysis</div>
+
+  <div class="pipeline">
+
+    <!-- Phase 1: Filtering -->
+    <div class="phase phase-1">
+      <div class="phase-header">
+        <span class="phase-tag">Phase 1</span>
+        <span class="phase-title">Filtering</span>
+        <span class="phase-desc">Run per measure (9 total) via <code>pipeline.sh</code></span>
+      </div>
+
+      <div class="stages">
+        <div class="stage">
+          <div class="stage-num">STAGE 0</div>
+          <div class="stage-name">Download</div>
+          <span class="stage-tool">CPU · datasets</span>
+          <div class="stage-desc">Download WildChat-4.8M (public ~3.2M cut), filter English, dedupe by <code>conversation_hash</code>.</div>
+          <div class="stage-io">→ data/wildchat_raw.jsonl<br>(1,442,077 rows)</div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="stage">
+          <div class="stage-num">STAGE 1</div>
+          <div class="stage-name">Coarse Filter</div>
+          <span class="stage-tool">vLLM · Qwen3-VL-8B</span>
+          <div class="stage-desc">Keyword/pattern filter using <code>filter1.json</code> prompts.</div>
+          <div class="stage-io">→ &lt;measure&gt;_coarse.jsonl</div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="stage">
+          <div class="stage-num">STAGE 2</div>
+          <div class="stage-name">Low-Quality Filter</div>
+          <span class="stage-tool">vLLM · Qwen3-VL-8B</span>
+          <div class="stage-desc">Domain-specific judge using <code>filter2.json</code>.</div>
+          <div class="stage-io">→ &lt;measure&gt;_scores.jsonl</div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="stage">
+          <div class="stage-num">STAGE 3</div>
+          <div class="stage-name">High-Quality Filter</div>
+          <span class="stage-tool">OpenRouter · GPT-4o-mini</span>
+          <div class="stage-desc">Dual-check (chitchat + category) using <code>filter3.json</code>. Outputs <code>chitchat_keep</code> &amp; <code>category_keep</code>.</div>
+          <div class="stage-io">→ &lt;measure&gt;_high_quality.jsonl</div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="stage">
+          <div class="stage-num">STAGE 4</div>
+          <div class="stage-name">Final Filter</div>
+          <span class="stage-tool">OpenRouter · Claude Opus 4.6</span>
+          <div class="stage-desc">Re-evaluate intersection (both keeps true) with Opus 4.6 using <code>filter4.json</code>.</div>
+          <div class="stage-io">→ experiments/&lt;NN&gt;_final_filter/results/</div>
+        </div>
+      </div>
+
+      <div class="measures-box">
+        <b>9 Measures</b> across 3 principles:
+        <div style="margin-top:6px;">
+          <span style="color:var(--accent-filter);">1x · Identity:</span>
+          <span class="measure-chip">1B_intentional_human_speech</span>
+          <span class="measure-chip">1B_human_pronoun</span>
+          <span class="measure-chip">1C_identity_transparency</span>
+        </div>
+        <div style="margin-top:4px;">
+          <span style="color:var(--accent-eval);">2x · Fabrication / Emotion / Sycophancy:</span>
+          <span class="measure-chip">2A_fabricated_personal_information</span>
+          <span class="measure-chip">2B_emotion_expression</span>
+          <span class="measure-chip">2C_deference</span>
+          <span class="measure-chip">2C_flattery_tone</span>
+          <span class="measure-chip">2D_human_relationship_encouragement</span>
+        </div>
+        <div style="margin-top:4px;">
+          <span style="color:var(--accent-analysis);">3x · Engagement:</span>
+          <span class="measure-chip">3A_engagement_hooks</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase-arrow">↓</div>
+
+    <!-- Phase 2: Evaluation -->
+    <div class="phase phase-2">
+      <div class="phase-header">
+        <span class="phase-tag">Phase 2</span>
+        <span class="phase-title">Evaluation</span>
+        <span class="phase-desc">Run once across all measures</span>
+      </div>
+
+      <div class="stages">
+        <div class="stage">
+          <div class="stage-num">STAGE 5</div>
+          <div class="stage-name">Data Preprocessing</div>
+          <span class="stage-tool">CPU + OpenRouter (Opus 4.6) + MiniLM</span>
+          <div class="stage-desc">
+            <b>5.1</b> Collect both-KEEP rows from all measures, dedupe by <code>user_input</code>, merge measures into list. Apply global <code>chitchat_keep=false</code> veto.<br>
+            <b>5.2</b> Classify single-turn vs multi-turn via Opus 4.6.<br>
+            <b>5.3</b> Semantic dedup of single-turn (cosine ≥ 0.85). Tag with <code>synthetic:false</code>, <code>language:"English"</code>.
+          </div>
+          <div class="stage-io">→ data/final.jsonl<br>→ data/single_turn_final.jsonl (408)<br>→ data/multi_turn_final.jsonl (518)</div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="stage">
+          <div class="stage-num">MANUAL</div>
+          <div class="stage-name">Manual Curation</div>
+          <span class="stage-tool">Human</span>
+          <div class="stage-desc">Hand-curated single-turn subset feeds Stage 6.</div>
+          <div class="stage-io">→ data/single_turn_final_manual.jsonl</div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="stage">
+          <div class="stage-num">STAGE 6</div>
+          <div class="stage-name">Generate Model Responses</div>
+          <span class="stage-tool">OpenRouter · DSPy (cached)</span>
+          <div class="stage-desc">Send each <code>user_input</code> to multiple models. <code>--model_set 1</code> (4 models) or <code>--model_set 2</code> (10 models). DSPy disk-cache makes re-runs reproducible.</div>
+          <div class="stage-io">→ data/single_turn_model_responses.jsonl</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="phase-arrow">↓</div>
+
+    <!-- Phase 3: Analysis -->
+    <div class="phase phase-3">
+      <div class="phase-header">
+        <span class="phase-tag">Phase 3</span>
+        <span class="phase-title">Analysis</span>
+        <span class="phase-desc">Judge and analyze model responses</span>
+      </div>
+
+      <div class="stages">
+        <div class="stage">
+          <div class="stage-num">STAGE 7</div>
+          <div class="stage-name">LLM-as-Judge</div>
+          <span class="stage-tool">OpenRouter · Claude Opus 4.6 · DSPy</span>
+          <div class="stage-desc">Evaluate each (input, measure, model) triple against the category-specific rubric in <code>filter2.json</code>. Sortable by input → measure → model family.</div>
+          <div class="stage-io">→ data/single_turn_eval_results.jsonl</div>
+        </div>
+        <div class="arrow">→</div>
+        <div class="stage">
+          <div class="stage-num">STAGE 8</div>
+          <div class="stage-name">Analysis</div>
+          <span class="stage-tool">CPU · matplotlib</span>
+          <div class="stage-desc">Read judge results and produce figures + summary tables.</div>
+          <div class="stage-io">→ data/eval_figures/</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div>Cluster: USC CARC SLURM · partitions <code>nlp_hiprio</code> / <code>nlp</code> · account <code>robinjia_875</code> · ~60 A6000 + 4 A100 · uv-managed Python 3.11+</div>
+      <div class="legend">
+        <div class="legend-item"><span class="swatch" style="background:var(--accent-filter);"></span>Filtering</div>
+        <div class="legend-item"><span class="swatch" style="background:var(--accent-eval);"></span>Evaluation</div>
+        <div class="legend-item"><span class="swatch" style="background:var(--accent-analysis);"></span>Analysis</div>
+        <div class="legend-item"><span class="swatch" style="background:var(--accent-data);"></span>Data artifact</div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

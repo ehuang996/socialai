@@ -1,237 +1,347 @@
 # Pipeline Results Summary
 
-11 measures across 4 filtering stages, then data preprocessing in Stage 5.
+9 measures across 4 filtering stages, then preprocessing (Stage 5),
+synthetic generation + relabel (Stage 6), and a refactored evaluation
+pipeline (Stage 7.1 generate → 7.2 judge → 7.3 analyze).
+
+The schema collapsed from an earlier 11-measure version (3 separate 2B
+sub-measures, plus `2A_fabricated_personal_details`, `2C_sycophancy`,
+`1B_human_disfluencies`). Renames and consolidations:
+
+| Old name | New name | What happened |
+|---|---|---|
+| `1B_human_disfluencies` | `1B_intentional_human_speech` | renamed only — Stage 1–4 outputs reused as-is |
+| `2A_fabricated_personal_details` | `2A_fabricated_personal_information` | renamed + Stage 2–4 rerun with new prompts (jessetho mirror) |
+| `2B_explicit_emotions` + `2B_implicit_emotions` + `2B_romantic_bonding` | `2B_emotion_expression` | three sub-measures merged into one + Stage 2–4 rerun (jessetho mirror) |
+| `2C_sycophancy` | `2C_flattery_tone` | renamed + Stage 2–4 rerun (jessetho mirror) |
+| `2C_deference` | (same name) | Stage 3–4 rerun with new prompts (main repo); Stage 2 unchanged |
+| `2D_human_relationship_encouragement` | (same name) | Stage 2–4 rerun (jessetho mirror) |
+| `1B_human_pronoun`, `1C_identity_transparency`, `3A_engagement_hooks` | (same name) | Stage 1–4 outputs reused as-is |
+
+**Two-repo layout.** Re-run measures live in the jessetho mirror; reused
+measures and the consolidated downstream artifacts live in the main repo.
+
+- Main: `/project2/robinjia_875/ehuang97/socialai/experiments/`
+- Mirror: `/project2/jessetho_1732/wangzhu/socialai/experiments/` (different folder numbering)
 
 ## Stage 0 — Download WildChat
 
-Downloaded WildChat-4.8M, filtered English, deduplicated → `data/wildchat_raw.jsonl`.
+Downloaded `allenai/WildChat-4.8M` (the **public, non-gated** release —
+~3.2M conversations; the full 4.8M lives in the request-only
+`allenai/WildChat-4.8M-Full` repo), filtered English, deduplicated by
+`conversation_hash` → `data/wildchat_raw.jsonl`.
+
+- **Total rows from HF:** 3,199,860
+- **After English filter:** 1,679,371
+- **After dedup:** 1,442,077
 
 ## Stage 1 — Coarse Filter (vLLM, Qwen3-VL-8B)
 
-Keyword/pattern-based filtering using local vLLM. Identical `filter1.json` across all measures (domain gate restricting to genuine human-AI chitchat).
+Identical `filter1.json` across all 9 measures (domain gate restricting
+to genuine human-AI chitchat).
 
 - **Input:** WildChat English conversations
-- **Output:** 560,969 chitchat conversations retained → `experiments/00_coarse_filter/`
+- **Output (main):** 560,969 chitchat conversations →
+  `experiments/00_coarse_filter/`
 
 ## Stage 2 — Low-Quality Filter (vLLM, Qwen3-VL-8B)
 
-Category-specific judge using `filter2.json` rubrics. 560,969 rows processed per measure.
+Category-specific judge using `filter2.json` rubrics. All 9 listed
+Stage 2 result files contain 560,969 scored rows. The 4 rerun measures
+were executed in the jessetho mirror, but their concatenated result
+files have the same row count as the main Stage 1 coarse output.
 
-| # | Measure | Experiment | keep=True | % |
-|---|---|---|---|---|
-| 1 | 1B_human_disfluencies | 01_low_quality_filter | 4,081 | 0.73% |
-| 2 | 1B_human_pronoun | 02_low_quality_filter | 8,291 | 1.48% |
-| 3 | 1C_identity_transparency | 03_low_quality_filter | 6,855 | 1.22% |
-| 4 | 2A_fabricated_personal_details | 04_low_quality_filter | 1,137 | 0.20% |
-| 5 | 2B_explicit_emotions | 05_low_quality_filter | 2,350 | 0.42% |
-| 6 | 2B_implicit_emotions | 06_low_quality_filter | 5,345 | 0.95% |
-| 7 | 2B_romantic_bonding | 07_low_quality_filter | 12,895 | 2.30% |
-| 8 | 2C_deference | 08_low_quality_filter | 15,082 | 2.69% |
-| 9 | 2C_sycophancy | 09_low_quality_filter | 329 | 0.06% |
-| 10 | 2D_human_relationship_encouragement | 10_low_quality_filter | 425 | 0.08% |
-| 11 | 3A_engagement_hooks | 11_low_quality_filter | 3,803 | 0.68% |
+| # | Measure | Source | keep=True | % of input |
+|---|---|---|---:|---:|
+| 1 | 1B_intentional_human_speech | main `01_low_quality_filter` | 4,081 | 0.73% |
+| 2 | 1B_human_pronoun | main `02_low_quality_filter` | 8,291 | 1.48% |
+| 3 | 1C_identity_transparency | main `03_low_quality_filter` | 6,855 | 1.22% |
+| 4 | 2A_fabricated_personal_information | mirror `25_low_quality_filter` | 404,591 | 72.1% |
+| 5 | 2B_emotion_expression | mirror `16_low_quality_filter` | 3,233 | 0.58% |
+| 6 | 2C_deference | main `08_low_quality_filter` | 15,082 | 2.69% |
+| 7 | 2C_flattery_tone | mirror `19_low_quality_filter` | 3,179 | 0.57% |
+| 8 | 2D_human_relationship_encouragement | mirror `22_low_quality_filter` | 214 | 0.04% |
+| 9 | 3A_engagement_hooks | main `11_low_quality_filter` | 3,803 | 0.68% |
 
-**Total: 60,593 keep=True across all 11 measures**
+**Note on 2A.** 404,591 / 560,969 ≈ 72% pass-through reflects the broad
+Stage 2 `2A_fabricated_personal_information` rubric; the GPT-4o-mini
+Stage 3 judge then compresses it down to 78. None of the other rerun
+measures behaves this way.
 
 ## Stage 3 — High-Quality Filter (GPT-4o-mini via OpenRouter)
 
-Dual-check: (1) genuine user-AI interaction? (2) does it match the category? Uses `filter3.json`. Only rows with both `chitchat_keep=true` AND `category_keep=true` advance to Stage 4.
+Dual-check: (1) genuine user-AI interaction? (2) does it match the
+category? Only rows with both `chitchat_keep=true` AND `category_keep=true`
+advance to Stage 4. Output schema in this stage and Stage 4 nests the
+judge output under `model_responses[<judge_key>].raw_response` (a JSON
+string with the four fields), not flat top-level keys.
 
-| # | Measure | Experiment | Stage 2 in | Both KEEP | % |
-|---|---|---|---|---|---|
-| 1 | 1B_human_disfluencies | 12_high_quality_filter | 4,081 | 46 | 1.1% |
-| 2 | 1B_human_pronoun | 13_high_quality_filter | 8,291 | 234 | 2.8% |
-| 3 | 1C_identity_transparency | 14_high_quality_filter | 6,855 | 1,419 | 20.7% |
-| 4 | 2A_fabricated_personal_details | 15_high_quality_filter | 1,137 | 77 | 6.8% |
-| 5 | 2B_explicit_emotions | 16_high_quality_filter | 2,350 | 165 | 7.0% |
-| 6 | 2B_implicit_emotions | 17_high_quality_filter | 5,345 | 1,744 | 32.6% |
-| 7 | 2B_romantic_bonding | 18_high_quality_filter | 12,895 | 110 | 0.9% |
-| 8 | 2C_deference | 19_high_quality_filter | 15,082 | 3,444 | 22.8% |
-| 9 | 2C_sycophancy | 20_high_quality_filter | 329 | 24 | 7.3% |
-| 10 | 2D_human_relationship_encouragement | 21_high_quality_filter | 425 | 42 | 9.9% |
-| 11 | 3A_engagement_hooks | 22_high_quality_filter | 3,803 | 993 | 26.1% |
+| # | Measure | Source | Stage 2 in | Both KEEP | % |
+|---|---|---|---:|---:|---:|
+| 1 | 1B_intentional_human_speech | main `12_high_quality_filter` | 4,081 | 46 | 1.1% |
+| 2 | 1B_human_pronoun | main `13_high_quality_filter` | 8,291 | 234 | 2.8% |
+| 3 | 1C_identity_transparency | main `14_high_quality_filter` | 6,855 | 1,419 | 20.7% |
+| 4 | 2A_fabricated_personal_information | mirror `26_high_quality_filter` | 404,591 | 78 | 0.02% |
+| 5 | 2B_emotion_expression | mirror `28_high_quality_filter` | 3,233 | 392 | 12.1% |
+| 6 | 2C_deference | main `19_high_quality_filter` (rerun) | 15,082 | 546 | 3.6% |
+| 7 | 2C_flattery_tone | mirror `20_high_quality_filter` | 3,179 | 293 | 9.2% |
+| 8 | 2D_human_relationship_encouragement | mirror `23_high_quality_filter` | 214 | 70 | 32.7% |
+| 9 | 3A_engagement_hooks | main `22_high_quality_filter` | 3,803 | 993 | 26.1% |
 
-**Total: 8,298 both-KEEP across all 11 measures**
+For 2B_emotion_expression there are two runs in the mirror — `17/18`
+(initial) and `28/29` (rerun, Apr 26 ~11:00). The `28/29` numbers are
+the current values used downstream and shown in the table; `17/18`
+(289 → 74) is superseded.
 
 ## Stage 4 — Final Filter (Claude Opus 4.6 via OpenRouter)
 
-Re-evaluates Stage 3 intersection rows with Opus 4.6 using `filter4.json`. Same dual-check but stricter model.
+Re-evaluates Stage 3 intersection rows with Opus 4.6 using `filter4.json`.
 
-| # | Measure | Experiment | Stage 3 in | Both KEEP | % |
-|---|---|---|---|---|---|
-| 1 | 1B_human_disfluencies | 23_final_filter | 46 | 10 | 21.7% |
-| 2 | 1B_human_pronoun | 24_final_filter | 234 | 80 | 34.2% |
-| 3 | 1C_identity_transparency | 25_final_filter | 1,419 | 142 | 10.0% |
-| 4 | 2A_fabricated_personal_details | 26_final_filter | 77 | 11 | 14.3% |
-| 5 | 2B_explicit_emotions | 27_final_filter | 165 | 62 | 37.6% |
-| 6 | 2B_implicit_emotions | 28_final_filter | 1,744 | 193 | 11.1% |
-| 7 | 2B_romantic_bonding | 29_final_filter | 110 | 24 | 21.8% |
-| 8 | 2C_deference | 30_final_filter | 3,444 | 237 | 6.9% |
-| 9 | 2C_sycophancy | 31_final_filter | 24 | 6 | 25.0% |
-| 10 | 2D_human_relationship_encouragement | 32_final_filter | 42 | 4 | 9.5% |
-| 11 | 3A_engagement_hooks | 33_final_filter | 993 | 500 | 50.4% |
+| # | Measure | Source | Stage 3 in | Both KEEP | % |
+|---|---|---|---:|---:|---:|
+| 1 | 1B_intentional_human_speech | main `23_final_filter` | 46 | 10 | 21.7% |
+| 2 | 1B_human_pronoun | main `24_final_filter` | 234 | 80 | 34.2% |
+| 3 | 1C_identity_transparency | main `25_final_filter` | 1,419 | 142 | 10.0% |
+| 4 | 2A_fabricated_personal_information | mirror `27_final_filter` | 78 | 13 | 16.7% |
+| 5 | 2B_emotion_expression | mirror `29_final_filter` | 392 | 91 | 23.2% |
+| 6 | 2C_deference | main `30_final_filter` (rerun) | 546 | 43 | 7.9% |
+| 7 | 2C_flattery_tone | mirror `21_final_filter` | 293 | 144 | 49.1% |
+| 8 | 2D_human_relationship_encouragement | mirror `24_final_filter` | 70 | 24 | 34.3% |
+| 9 | 3A_engagement_hooks | main `33_final_filter` | 993 | 500 | 50.4% |
 
-**Total: 1,269 both-KEEP across all 11 measures**
+**Total: 1,047 both-KEEP across all 9 measures** (pre-dedup, before
+preprocessing).
 
-## Stage 5 — Data Preprocessing
+## Stage 5 — Data Preprocessing + Seedset Consolidation
 
-Three phases: collect & deduplicate, split single/multi-turn, semantic dedup + tagging.
+The current seedset files are the authoritative record for this stage.
+`data_preprocessing_v2.py` records the v2 preprocessing procedure and
+produced the jessetho intermediate files `final_v2.jsonl` and
+`single_turn_final_v2.jsonl`; the final raw seedset was then manually
+consolidated into the jessetho mirror's `data/new_seedset.jsonl`, copied
+locally as `data/seedset_raw.jsonl`.
 
-### Phase 1: Collect & Deduplicate
+Differences from v1:
 
-Collects all 1,269 both-KEEP rows from Stage 4, applies global chitchat veto (if any measure's Opus judge returned `chitchat_keep=false` for a `user_input`, it is dropped everywhere), and deduplicates by `user_input`. Conversations appearing in multiple measures get a single row with `measure` as a list.
+1. Reads from a hand-curated list of `(source_path, measure)` pairs
+   spanning **both** project locations (main + mirror), so re-run
+   new-prompt measures mix with measures that didn't get rerun. The
+   checked-in script's source list covers 8 measures; the final seedset
+   consolidation also brings in the `2C_deference` rerun.
+2. **No chitchat veto.** v1 dropped any `user_input` whose
+   `chitchat_keep=false` was returned by *any* measure's judge; v2
+   keeps every both-keep row regardless.
+3. Batched single/multi classification: one Opus 4.6 call labels 10
+   messages at a time (~10× fewer API calls), DSPy disk cache.
 
-- **Total rows scanned:** 8,298
-- **Errors:** 257
-- **Dropped by chitchat veto:** 4,493
-- **Both KEEP (before dedup):** 1,223
-- **After dedup:** 955 unique conversations
-  - Single-measure: 813
-  - Multi-measure: 142
+The direct v2 script output `single_turn_final_v2.jsonl` had 324 rows
+and 370 original tags. The manually consolidated `new_seedset.jsonl` /
+`seedset_raw.jsonl` has 322 rows and 368 original tags: 285 exact
+`user_input`s overlap with `single_turn_final_v2`, 39 v2 rows were
+omitted, 37 rows were newly included, and 3 shared rows gained an
+original `2C_deference` tag. After the union relabel pass described
+below, the current canonical in-the-wild portion of `final_dataset.jsonl`
+is `data/seedset_data.jsonl` (the same 322 rows, 960 relabelled tags).
 
-| Measure | Raw (Stage 4) | After collect (before dedup) |
-|---|---|---|
-| 1B_human_disfluencies | 10 | 10 |
-| 1B_human_pronoun | 80 | 74 |
-| 1C_identity_transparency | 142 | 139 |
-| 2A_fabricated_personal_details | 11 | 11 |
-| 2B_explicit_emotions | 62 | 59 |
-| 2B_implicit_emotions | 193 | 189 |
-| 2B_romantic_bonding | 24 | 22 |
-| 2C_deference | 237 | 235 |
-| 2C_sycophancy | 6 | 6 |
-| 2D_human_relationship_encouragement | 4 | 3 |
-| 3A_engagement_hooks | 500 | 475 |
-| **Total** | **1,269** | **1,223 → 955 unique** |
+### Raw seedset measure distribution (322 rows, schema `{user_input, measure, synthetic, language}`)
 
-Output: `data/final.jsonl` (955 rows)
-
-### Phase 2: Split Single-Turn vs Multi-Turn
-
-Uses Opus 4.6 via OpenRouter to classify each conversation.
-
-| Split | Count | % |
-|---|---|---|
-| Single-turn | 437 | 45.8% |
-| Multi-turn | 518 | 54.2% |
-| **Total** | **955** | 100% |
-
-### Phase 3: Data Cleaning
-
-Semantic dedup on single-turn file only (sentence-transformers/all-MiniLM-L6-v2, cosine similarity threshold 0.85). All rows tagged with `synthetic: false`, `language: "English"`.
-
-- **Single-turn before dedup:** 437
-- **Dropped:** 29
-- **Single-turn after dedup:** 408
-
-### Final Output Files
-
-| File | Rows | Fields |
-|---|---|---|
-| `data/final.jsonl` | 955 | user_input, assistant_response, timestamp, measure, synthetic, language |
-| `data/single_turn_final.jsonl` | 408 | user_input, measure, synthetic, language |
-| `data/multi_turn_final.jsonl` | 518 | user_input, assistant_response, timestamp, measure, synthetic, language |
-| `data/split_report_final.json` | — | Classification details |
-| `data/dedup_report_final.json` | — | Semantic dedup decisions |
-
-### Measure Distribution (after dedup, in final.jsonl)
-
-| Measure | Rows |
-|---|---|
-| 1B_human_disfluencies | 10 |
-| 1B_human_pronoun | 73 |
-| 1C_identity_transparency | 123 |
-| 2A_fabricated_personal_details | 11 |
-| 2B_explicit_emotions | 53 |
-| 2B_implicit_emotions | 172 |
-| 2B_romantic_bonding | 19 |
-| 2C_deference | 222 |
-| 2C_sycophancy | 6 |
+| Measure | Tags |
+|---|---:|
+| 1B_intentional_human_speech | 2 |
+| 1B_human_pronoun | 72 |
+| 1C_identity_transparency | 40 |
+| 2A_fabricated_personal_information | 11 |
+| 2B_emotion_expression | 29 |
+| 2C_deference | 32 |
+| 2C_flattery_tone | 93 |
 | 2D_human_relationship_encouragement | 3 |
-| 3A_engagement_hooks | 458 |
-| **Total measure-labels** | **1,150** |
+| 3A_engagement_hooks | 86 |
+| **sum (tags, not rows)** | **368** |
 
-(955 unique conversations, 1,150 measure-labels due to multi-measure rows.)
+Avg measures/row ≈ 1.14. The 1B_intentional_human_speech count (2) is
+particularly low; it expands sharply after the Stage 6 relabel pass
+(see below).
 
----
+## Stage 6 — Synthetic Generation + Union Relabel
 
-## Stages 6–8 — Evaluation Pipeline (old 452 dataset)
+Rewrites near-miss user inputs (from the Stage 3 XOR pool) into
+on-target candidates anchored to the seedset few-shot pool.
 
-Stages 6–8 were run on an earlier version of the dataset (452 suffix, now in `data/old/`). This dataset had 323 total rows, 148 single-turn, 175 multi-turn, and covered 8 measures (no 1B_human_pronoun, 2C_deference, or 3A_engagement_hooks).
+- **Input pool:** `data/near_misses.jsonl` (11,520 rows, pooled by
+  leading principle digit).
+- **Raw rewrites:** `data/synthetic_data_full.jsonl` (1,722 rows).
+- **Cosine-similarity filter** on `cos(user_input, source_input) ≥ 0.75`
+  → `data/synthetic_data.jsonl` (684 rows).
+- **Re-judge / union relabel** (see [`relabel_synthetic.md`](relabel_synthetic.md)):
+  each row scored across all 9 measures by 3 responder models (gpt-4o,
+  claude-sonnet-4, gemini-2.0-flash-001), Opus 4.6 judge. The new
+  `measure` list = union(original tags, any measure where ANY of the
+  three responders is judged `keep=true`). Output:
+  `data/synthetic_data_relabelled.jsonl` (684 rows).
+- **Manual pass:** selects 647 of the 684 relabelled synthetic rows for
+  `data/final_dataset.jsonl` (37 rows removed). The source
+  `data/synthetic_data.jsonl` and `data/synthetic_data_relabelled.jsonl`
+  files remain the 684-row pre-manual-pass artifacts. The manual pass also
+  edits 14 accepted synthetic prompts, so the 647 synthetic rows in
+  `final_dataset.jsonl` are not an exact `user_input` subset of
+  `synthetic_data_relabelled.jsonl`.
+- The judge output for each `(input, model, measure)` triple lives in
+  `data/synthetic_scored.jsonl` (3 × 684 × 9 = 18,468 rows). The same
+  scoring pass on the seedset lives in `data/seedset_eval.jsonl`
+  (3 × 322 × 9 = 8,694 rows).
 
-### Stage 6 — Generate Model Responses
+### Per-measure relabel deltas
 
-Sent 148 single-turn inputs to 14 models via OpenRouter (DSPy caching).
+Tag totals count tag occurrences across rows, not distinct rows. See
+[`data_results.md`](data_results.md) for the full per-measure
+breakdown.
 
-**14 models across 4 families:**
-- **OpenAI (5):** GPT-5-4 Pro, GPT-5-4, GPT-5-3, o4-mini, GPT-4o-mini
-- **Google (3):** Gemini 3.1 Pro, Gemini 3 Flash, Gemini 2 Flash
-- **Anthropic (4):** Claude Opus, Claude Sonnet, Claude Haiku, Claude Sonnet 4
-- **xAI (2):** Grok 4, Grok 3 Mini
+| Category | Seedset orig → relab (Δ) | Synthetic orig → relab (Δ) |
+|---|---:|---:|
+| 1B_intentional_human_speech | 2 → 143 (+141) | 97 → 450 (+353) |
+| 1B_human_pronoun | 72 → 106 (+34) | 43 → 210 (+167) |
+| 1C_identity_transparency | 40 → 48 (+8) | 61 → 167 (+106) |
+| 2A_fabricated_personal_information | 11 → 37 (+26) | 112 → 153 (+41) |
+| 2B_emotion_expression | 29 → 112 (+83) | 83 → 253 (+170) |
+| 2C_deference | 32 → 59 (+27) | 105 → 218 (+113) |
+| 2C_flattery_tone | 93 → 206 (+113) | 98 → 395 (+297) |
+| 2D_human_relationship_encouragement | 3 → 21 (+18) | 48 → 139 (+91) |
+| 3A_engagement_hooks | 86 → 228 (+142) | 37 → 291 (+254) |
+| **sum (tags)** | **368 → 960 (+592)** | **684 → 2,276 (+1,592)** |
 
-Output: `data/old/single_turn_model_responses_452.jsonl` (148 rows × 14 model responses)
+`2A_fabricated_personal_information` is the smallest synthetic gainer
+and one of the smaller seedset gainers, so fabricated-personal-info
+behavior is added less often by the cross-measure union relabel pass
+than the high-expansion labels such as `1B_intentional_human_speech`,
+`2C_flattery_tone`, and `3A_engagement_hooks`.
 
-### Stage 7.1 — LLM-as-Judge: Single-Turn
+### Final dataset (Stage 6 output → Stage 7 input)
 
-Evaluated each model response against the category-specific rubric with Opus 4.6.
+`data/final_dataset.jsonl` = relabelled in-the-wild seedset (322) +
+manually accepted relabelled synthetic (647) = **969 rows**. Schema:
+`{user_input, measure, synthetic, language}`. The final file is the
+authoritative Stage 7 input; `wc -l` may show 968 if the file lacks a
+trailing newline, but JSON parsing yields 969 records.
 
-- **Inputs:** 148 single-turn rows, 187 measure-labels, 14 models
-- **Total judgements:** 2,618 rows (187 × 14)
-- Output: `data/old/stage7_1_eval_results_452.jsonl`
+| Measure | In-the-wild tags | Synthetic tags | Total tags |
+|---|---:|---:|---:|
+| 1B_intentional_human_speech | 143 | 432 | 575 |
+| 1B_human_pronoun | 106 | 200 | 306 |
+| 1C_identity_transparency | 48 | 161 | 209 |
+| 2A_fabricated_personal_information | 37 | 148 | 185 |
+| 2B_emotion_expression | 112 | 246 | 358 |
+| 2C_deference | 59 | 205 | 264 |
+| 2C_flattery_tone | 206 | 381 | 587 |
+| 2D_human_relationship_encouragement | 21 | 132 | 153 |
+| 3A_engagement_hooks | 228 | 282 | 510 |
+| **sum (tags)** | **960** | **2,187** | **3,147** |
 
-### Stage 8.1 — Analysis of Single-Turn Results
+Avg measures/row ≈ 3.25 (969 rows, 3,147 tags).
 
-Figures and summary tables in `data/stage8.1_figures_452/`.
+## Stage 7 — Refactored Evaluation Pipeline
 
-**Overall violation rate by family:**
+The previous numbering (Stage 6.1 generate, Stage 7.1 single-turn judge,
+Stage 7.2 multi-turn, Stage 8.1 analyze) has been collapsed into three
+top-level scripts under `src/evaluation/`. Multi-turn is no longer in
+the active pipeline; everything operates on `data/final_dataset.jsonl`.
 
-| Family | Models | Avg Violation Rate | Best Model | Worst Model |
-|---|---|---|---|---|
-| Anthropic | 4 | 25.5% | Claude Sonnet (23.5%) | Claude Sonnet 4 (28.9%) |
-| Google | 3 | 41.2% | Gemini 2 Flash (36.9%) | Gemini 3 Flash (48.7%) |
-| OpenAI | 5 | 43.3% | GPT-5-4 Pro (34.2%) | o4-mini (51.3%) |
-| xAI | 2 | 53.7% | Grok 3 Mini (36.4%) | Grok 4 (71.1%) |
+| Stage | Script | Input | Output |
+|---|---|---|---|
+| 7.1 generate | `src/evaluation/generate_responses.py` + `src/evaluation/generate_local_responses.py` | `data/final_dataset.jsonl` | `data/eval_responses.jsonl` |
+| 7.2 judge | `src/evaluation/judge_responses.py` | `data/eval_responses.jsonl` | `data/eval_judge_results.jsonl` |
+| 7.3 analyze | `src/evaluation/analyze_results.py` | `data/eval_judge_results.jsonl` | `data/eval_figures/` |
 
-**Overall violation rate by measure:**
+Wrapper shell scripts: `scripts/run_stage7_1_generate.sh`,
+`scripts/run_stage7_1_local_qwen.sh`, and `scripts/run_stage7_2_judge.sh`.
+They wrap the Python entry points with the canonical input/output paths.
+Common helpers live in
+`src/evaluation/_eval_common.py` (`ALL_MEASURES`, judge prompt loader,
+parse helpers).
 
-| Measure | Inputs | Violations | Total | Rate |
-|---|---|---|---|---|
-| 1B Disfluencies | 1 | 1 | 14 | 7.1% |
-| 1C Identity | 59 | 372 | 826 | 45.0% |
-| 2A Fabrication | 10 | 18 | 140 | 12.9% |
-| 2B Explicit Emo | 36 | 189 | 504 | 37.5% |
-| 2B Implicit Emo | 58 | 355 | 812 | 43.7% |
-| 2B Romantic | 8 | 39 | 112 | 34.8% |
-| 2C Sycophancy | 11 | 47 | 154 | 30.5% |
-| 2D Relationship | 4 | 7 | 56 | 12.5% |
+### Stage 7.1 — Generate Model Responses
 
-15 figures generated (see `data/stage8.1_figures_452/`).
+25 model evaluations spanning 6 providers, partitioned by role. The API/direct
+launcher covers 23 models; the local-HF add-on serves Qwen3 1.7B and 4B with
+vLLM on CARC GPUs and merges them into the same `eval_responses.jsonl` schema.
 
----
+- **Target (3):** `gemini_2_flash_001`, `gpt_4o`, `claude_sonnet_4`
+- **Rewriting (3):** `gemini_3_1_pro`, `gpt_5_4`, `claude_opus_4_6`
+- **Frontier (19):** GPT 5.5, Claude Opus 4.7, three Opus 4.6
+  thinking-budget variants (`t2k`, `t5k`, `t10k`), Gemini 3 Flash, three
+  Grok variants, GPT-4o-mini, three DeepSeek variants, Qwen 3.6 Max
+  preview + five Qwen3 sizes (1.7B, 4B, 8B, 14B, 32B). Qwen3 1.7B and 4B
+  are local-HF add-ons because they were not usable through OpenRouter
+  during setup; Qwen3 0.6B remains excluded.
 
-## Human Annotation
+Caching/resumption: the code requests DSPy disk caching at `cache/dspy/`.
+When disk caching is active, the three Opus 4.6 thinking-budget variants
+get distinct cache entries because `extra_body` is part of the request
+payload. File-based resumption is the authoritative resume layer:
+already-written rows in the canonical output or shard/part files are
+skipped before forming new model calls. `--rollout_id` forces fresh
+generations while still writing to cache.
 
-5 annotators (Bill, Eric, Johnny, Mo, Ziyi) each annotated 30 examples from the single-turn evaluation results.
+Total scale: 25 × 969 = **24,225 generations** at full coverage
+(22,287 API/direct + 1,938 local HF).
 
-- **Total annotations:** 150 (5 × 30)
-- **Fields:** example_index, is_instance, guidelines_correct, measure, model, model_response, user_input, other_measures, notes
+The active OpenRouter slugs were checked during setup against OpenRouter
+endpoint availability; missing required key sections still hard-fail at
+startup.
+
+### Stage 7.2 — LLM-as-Judge
+
+For every row produced by 7.1, every model response is judged only
+against the row's labelled `measure` list. Multi-label rows therefore
+produce one judge call per (input, labelled measure, model) triple.
+Judge: Anthropic Claude Opus 4.6 via OpenRouter (no thinking,
+temperature=0, 3-attempt retry on parse failures with rollout-id bump).
+
+Total scale after the local-Qwen merge: 3,147 labelled input-measure pairs
+× 25 models = **78,675 judge calls** at full coverage.
+
+Output schema: one row per (user_input, measure, model_name) triple
+with `judge_output: {reasoning, keep}`. Errored rows preserve a
+`raw_output` so partial failures don't corrupt downstream aggregates.
+
+### Stage 7.3 — Analysis
+
+`src/evaluation/analyze_results.py` produces 15 figures and a
+`summary_tables.md` in `data/eval_figures/`. Model families and
+display order are defined in `MODEL_FAMILIES` / `MODEL_ORDER` at the
+top of the file; the three Opus 4.6 thinking-budget variants share the
+Anthropic family but are plotted as separate models, except in the
+"per-family generation" line plot (fig4) where only the no-thinking
+variant counts as the Opus 4.6 generation point.
+
+`MEASURE_SHORT` provides the figure-friendly labels: `1B Speech`,
+`1B Pronoun`, `1C Identity`, `2A Fabrication`, `2B Emotion`,
+`2C Deference`, `2C Flattery`, `2D Relationship`, `3A Engagement`.
+
+**Status.** Stage 7.1 generation has started but is not yet finalized in
+the canonical merged output. The worktree currently contains partial API
+shard outputs and completed local-Qwen part files; the final destination
+after merge remains `data/eval_responses.jsonl`. Stage 7.2 and 7.3 have
+not yet produced final artifacts: `data/eval_judge_results.jsonl` is not
+present, and `data/eval_figures/` is not populated with current
+evaluation results.
+
+## Auxiliary: Human Annotation
+
+8 annotators (bill, claude, eric, johnny, mo, nate, ravi, ziyi)
+each annotated 30 examples from a single-turn evaluation result file.
+
+- **Total annotations:** 240 (8 × 30)
+- **Fields:** `example_index, user_input, measure, model, model_response,
+  guidelines_correct, is_instance, other_measures, notes`
 - **Location:** `data/annotations/`
 
----
+## Auxiliary: Verification Pipeline
 
-## Verification Pipeline
-
-Re-ran all 4 filter stages on 104 single-turn examples to validate filter consistency.
+Re-ran all 4 filter stages on 104 single-turn examples to validate
+filter consistency.
 
 - **Input:** `data/verify/single_turn_104_prepared.jsonl` (104 rows)
-- **Output:** `data/verify/verify_final.jsonl` (14 rows passed all stages)
-- **Script:** `scripts/run_verify.sh` — submits all 10 measures in parallel with SLURM dependency chaining (stages 1→2→3→4)
-
----
-
-## Synthetic Data Generation
-
-Early-stage synthetic data generation for low-count measures.
-
-- `data/synthetic/2C_sycophancy.jsonl` — 2 rows
-- **Status:** In progress
+- **Output:** `data/verify/verify_final.jsonl`
+- **Driver:** `scripts/run_verify.sh`, `scripts/run_verify_s2.sh`,
+  `scripts/run_verify_s2_s4.sh` — submit measures in parallel with
+  SLURM dependency chaining (stages 1→2→3→4)

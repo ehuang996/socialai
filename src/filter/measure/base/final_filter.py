@@ -5,6 +5,10 @@ dual-check prompt as Stage 3 but with a stronger model (Opus 4.6).
 
 Input: Stage 3 output JSONL. Only processes rows where GPT-4o-mini returned
 chitchat_keep=true AND category_keep=true (the intersection).
+
+Caching: API calls go through dspy.LM with disk caching at cache/dspy/. Re-running
+with the same (model, system_prompt, conversation, temperature) returns the cached
+verdict.
 """
 
 import argparse
@@ -13,7 +17,11 @@ import json
 import os
 from pathlib import Path
 
-from openai import AsyncOpenAI
+# Point DSPy disk cache at the project-local cache/dspy/ directory.
+# Must be set BEFORE `import dspy` since dspy reads the env var at import time.
+os.environ.setdefault("DSPY_CACHEDIR", "cache/dspy")
+
+import dspy
 from tqdm.asyncio import tqdm_asyncio
 from utils import Judge, JudgeConfig
 
@@ -40,6 +48,21 @@ class FinalFilterJudge(Judge):
         else:
             self._api_key = os.environ.get("OPENROUTER_API_KEY", "")
 
+        # Build one DSPy LM per model in filter4.json — each carries its own
+        # disk-cache namespace via the (model, sampling_kwargs, messages) key.
+        self._lms = {
+            col_name: dspy.LM(
+                model=f"openrouter/{model_id}",
+                api_key=self._api_key,
+                api_base=OPENROUTER_BASE_URL,
+                max_tokens=config.max_tokens,
+                temperature=config.temperature,
+                cache=True,
+                timeout=120,
+            )
+            for col_name, model_id in self._models.items()
+        }
+
     def system_prompt(self) -> str:
         return self._system_prompt
 
@@ -53,7 +76,17 @@ class FinalFilterJudge(Judge):
     def judge_type(self) -> str:
         return self._measure_dir.name
 
-    async def process_row(self, row: dict, client: AsyncOpenAI, sem: asyncio.Semaphore, f_out):
+    async def _call_lm(self, lm: dspy.LM, messages: list[dict]) -> str:
+        """Invoke a DSPy LM from async context via to_thread (DSPy is sync)."""
+        response = await asyncio.to_thread(lm, messages=messages)
+        if not response or not response[0]:
+            raise ValueError("empty response")
+        raw = response[0]
+        if isinstance(raw, dict):
+            raw = raw.get("content", "") or raw.get("text", "") or str(raw)
+        return raw.strip()
+
+    async def process_row(self, row: dict, sem: asyncio.Semaphore, f_out):
         """Query each model in filter4.json and write a single JSONL row with all responses."""
         async with sem:
             user_content = self.format_conversation(row)
@@ -66,15 +99,9 @@ class FinalFilterJudge(Judge):
             ]
 
             model_results = {}
-            for col_name, model_id in self._models.items():
+            for col_name in self._models:
                 try:
-                    response = await client.chat.completions.create(
-                        model=model_id,
-                        messages=messages,
-                        temperature=self.config.temperature,
-                        max_tokens=self.config.max_tokens,
-                    )
-                    raw = response.choices[0].message.content.strip()
+                    raw = await self._call_lm(self._lms[col_name], messages)
                     parsed = self.parse_response(raw)
                     model_results[col_name] = {
                         "raw_response": raw,
@@ -94,31 +121,39 @@ class FinalFilterJudge(Judge):
             f_out.flush()
 
     async def run(self):
-        """Override base run() to use OpenRouter client and filter to Stage 3 intersection."""
-        client = AsyncOpenAI(base_url=OPENROUTER_BASE_URL, api_key=self._api_key)
+        """Override base run() to use OpenRouter via DSPy (cached) and filter to Stage 3 intersection.
+
+        Slice this shard's deterministic subset BEFORE filtering by keep / completed
+        (see Judge.run docstring on the resumed-shard duplicate-work bug).
+        """
         sem = asyncio.Semaphore(self.config.concurrency_limit)
         completed = self.load_completed_ids()
 
-        rows = []
+        all_rows = []
         with open(self.config.input_path) as f:
             for line in f:
-                row = json.loads(line)
-                # Only process rows that passed both checks in Stage 3
-                resp = row.get("model_responses", {}).get("gpt_4o_mini", {})
-                if not (resp.get("chitchat_keep") and resp.get("category_keep")):
-                    continue
-                if row["conversation_hash"] not in completed:
-                    rows.append(row)
+                all_rows.append(json.loads(line))
 
         if self.config.num_shards > 1:
-            rows = rows[self.config.shard_id :: self.config.num_shards]
+            shard_rows = all_rows[self.config.shard_id :: self.config.num_shards]
+        else:
+            shard_rows = all_rows
+
+        def _passes_stage3(r: dict) -> bool:
+            resp = r.get("model_responses", {}).get("gpt_4o_mini", {})
+            return bool(resp.get("chitchat_keep")) and bool(resp.get("category_keep"))
+
+        rows = [
+            r for r in shard_rows
+            if _passes_stage3(r) and r["conversation_hash"] not in completed
+        ]
 
         print(f"[Shard {self.config.shard_id}] Processing {len(rows)} rows "
-              f"(skipped {len(completed)} completed)")
+              f"(slice size {len(shard_rows)}, skipped {len(completed)} completed)")
         print(f"Models: {self._models}")
 
         with open(self.config.output_path, "a") as f_out:
-            tasks = [self.process_row(row, client, sem, f_out) for row in rows]
+            tasks = [self.process_row(row, sem, f_out) for row in rows]
             await tqdm_asyncio.gather(*tasks)
 
         print(f"[Shard {self.config.shard_id}] Done.")

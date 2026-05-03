@@ -13,8 +13,13 @@
 #
 # --job-name, --array, --output, --error are set by pipeline.sh on the command line.
 
-#SBATCH --partition=nlp_hiprio
+#SBATCH --partition=nlp_hiprio,nlp
 #SBATCH --account=robinjia_875
+#SBATCH --requeue
+# nlp_hiprio caps user at 8 GPUs (QOS MaxTRESPU). With 4 measures × 8 shards = 32
+# concurrent GPU tasks, SLURM falls back to nlp (60-GPU/user, preemptable) for the
+# overflow. --requeue: SLURM auto-resubmits preempted tasks; Judge.load_completed_ids()
+# resumes from the per-shard partial file on each restart.
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
@@ -30,14 +35,19 @@ export PATH="$HOME/.local/bin:$PATH"
 
 cd $SLURM_SUBMIT_DIR
 
-export HF_HOME=/project2/robinjia_875/wangzhu/eric_huang/.cache/huggingface
-export TMPDIR=/project2/robinjia_875/wangzhu/eric_huang/.cache/tmp/job_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}
+# HF cache on /home1 (220T fs, 103T free) — robinjia_875 project is 98% full and
+# even tiny vLLM startup writes (refs/main, .no_exist/*) intermittently fail with
+# OSError [Errno 122] there. /home1 has no group-quota issues. The Qwen3-VL-8B
+# model is already cached at /home1/wangzhu/.cache/huggingface (verified 17 GB).
+export HF_HOME=/home1/wangzhu/.cache/huggingface
+# TMPDIR on the NEW project (jessetho_1732) — avoid the old robinjia_875 disk that's at 98%.
+export TMPDIR=/project2/jessetho_1732/wangzhu/socialai/cache/tmp/job_${SLURM_JOB_ID}_${SLURM_ARRAY_TASK_ID}
 mkdir -p $TMPDIR
 
 export VLLM_PORT=$(python3 -c "import socket; s=socket.socket(); s.bind(('', 0)); print(s.getsockname()[1]); s.close()")
 echo "Using vLLM port: $VLLM_PORT"
 
-uv run vllm serve Qwen/Qwen3-VL-8B-Instruct \
+uv run --no-sync vllm serve Qwen/Qwen3-VL-8B-Instruct \
     --tensor-parallel-size 1 \
     --port $VLLM_PORT \
     --max-model-len 16384 \
@@ -56,7 +66,7 @@ if [ $? -ne 0 ]; then
 fi
 echo "vLLM server ready."
 
-uv run python src/filter/run.py \
+uv run --no-sync python src/filter/run.py \
     --measure ${MEASURE} \
     --stage ${STAGE} \
     ${EXPERIMENT_DIR:+--experiment_dir ${EXPERIMENT_DIR}} \

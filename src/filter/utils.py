@@ -21,9 +21,17 @@ class JudgeConfig:
     concurrency_limit: int = 64
     max_tokens: int = 512
     temperature: float = 0.0
-    # Read from env for SLURM array jobs
+    # Read from env for SLURM array jobs.
+    # MAKEUP_NUM_SHARDS lets us override SLURM_ARRAY_TASK_COUNT when submitting
+    # a partial-list array (e.g. `--array=0,1`) for a make-up run: SLURM sets
+    # SLURM_ARRAY_TASK_COUNT to the *submitted* count (2 here, not the original
+    # 8), which would produce a 2-way slice instead of 1/8 slices. The override
+    # forces num_shards back to the true sharding.
     shard_id: int = field(default_factory=lambda: int(os.getenv("SLURM_ARRAY_TASK_ID", "0")))
-    num_shards: int = field(default_factory=lambda: int(os.getenv("SLURM_ARRAY_TASK_COUNT", "1")))
+    num_shards: int = field(default_factory=lambda: int(
+        os.getenv("MAKEUP_NUM_SHARDS")
+        or os.getenv("SLURM_ARRAY_TASK_COUNT", "1")
+    ))
 
 
 class Judge(ABC):
@@ -108,23 +116,37 @@ class Judge(ABC):
             f_out.flush()
 
     async def run(self):
-        """Main entry: load input, shard, skip completed, run async inference, write JSONL."""
+        """Main entry: load input, shard, skip completed, run async inference, write JSONL.
+
+        Order matters: SLICE the input by shard FIRST, THEN filter by completed_ids.
+        Doing the filter first and slicing the filtered list (the previous bug) caused
+        each shard to process rows that belong to OTHER shards' slices — turning resumed
+        runs into ~7× duplicate work, since each shard's completed-id set only covers
+        its own part file and not the rows other shards had already done.
+        """
         client = AsyncOpenAI(base_url=self.config.api_url, api_key="EMPTY")
         sem = asyncio.Semaphore(self.config.concurrency_limit)
         completed = self.load_completed_ids()
 
-        # Load and shard input
-        rows = []
+        # Step 1: load all input rows
+        all_rows = []
         with open(self.config.input_path) as f:
             for line in f:
-                row = json.loads(line)
-                if row["conversation_hash"] not in completed:
-                    rows.append(row)
+                all_rows.append(json.loads(line))
 
+        # Step 2: slice to this shard's deterministic subset BEFORE filtering
         if self.config.num_shards > 1:
-            rows = rows[self.config.shard_id :: self.config.num_shards]
+            shard_rows = all_rows[self.config.shard_id :: self.config.num_shards]
+        else:
+            shard_rows = all_rows
 
-        print(f"[Shard {self.config.shard_id}] Processing {len(rows)} rows (skipped {len(completed)} completed)")
+        # Step 3: drop rows already completed for this shard
+        rows = [r for r in shard_rows if r["conversation_hash"] not in completed]
+
+        print(
+            f"[Shard {self.config.shard_id}] Processing {len(rows)} rows "
+            f"(slice size {len(shard_rows)}, skipped {len(completed)} completed)"
+        )
 
         with open(self.config.output_path, "a") as f_out:
             tasks = [self.process_row(row, client, sem, f_out) for row in rows]

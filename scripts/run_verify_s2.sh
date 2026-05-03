@@ -1,7 +1,7 @@
 #!/bin/bash
 # Run Stage 2 (low_quality_filter) for all 10 measures using existing Stage 1 output.
 #
-# Input (shared): experiments/verify/verify_1B_human_disfluencies/results/1B_human_disfluencies_coarse.jsonl
+# Input (shared): experiments/verify/verify_1B_intentional_human_speech/results/1B_intentional_human_speech_coarse.jsonl
 # Output: experiments/verify/verify_<measure>/results/<measure>_scores.jsonl
 #
 # Usage:
@@ -10,7 +10,7 @@
 set -e
 
 MEASURES=(
-    1B_human_disfluencies
+    1B_intentional_human_speech
     1B_human_pronoun
     1C_identity_transparency
     2A_fabricated_personal_details
@@ -33,7 +33,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 ROOT=$(pwd)
-COARSE_INPUT="${ROOT}/experiments/verify/verify_1B_human_disfluencies/results/1B_human_disfluencies_coarse.jsonl"
+COARSE_INPUT="${ROOT}/experiments/verify/verify_1B_intentional_human_speech/results/1B_intentional_human_speech_coarse.jsonl"
 
 if [[ ! -f "$COARSE_INPUT" ]]; then
     echo "ERROR: Stage 1 output not found: $COARSE_INPUT"

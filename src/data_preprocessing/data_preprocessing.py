@@ -4,10 +4,17 @@ Merges the former Stage 5 (collect_final) and Stage 5.5 (split_turns) into a
 single preprocessing step, followed by a data-cleaning pass.
 
 Phase 1 — Collect & Deduplicate
-    Reads all `<NN>_final_filter` experiments, keeps rows where the judge model
-    returned both `chitchat_keep=true` AND `category_keep=true`, and
-    deduplicates by `user_input`. Conversations appearing in multiple measures
-    get a single row with `measure` as a list.
+    Reads all `<NN>_final_filter` experiments and keeps rows matching the
+    selected pool, then deduplicates by `user_input`:
+      - `--pool both_keep` (default): rows where the judge returned both
+        `chitchat_keep=true` AND `category_keep=true` (positives).
+      - `--pool xor`: rows where exactly one of the two keeps is true
+        (negatives, used as few-shot negatives for synthetic generation).
+    The global chitchat veto is applied only in `both_keep` mode (domain gate
+    for positives). In `xor` mode the veto is skipped, since XOR rows include
+    `chitchat_keep=false` by definition.
+    Conversations appearing in multiple measures get a single row with
+    `measure` as a list.
 
 Phase 2 — Split Single-Turn vs Multi-Turn
     Uses Claude Opus 4.6 via OpenRouter to classify each `user_input` as either
@@ -30,12 +37,17 @@ Outputs (given --output data/final.jsonl):
 
 import argparse
 import json
+import os
 import re
 import time
 from collections import OrderedDict
 from pathlib import Path
 
-import openai
+# Point DSPy disk cache at the project-local cache/dspy/ directory.
+# Must be set BEFORE `import dspy` since dspy reads the env var at import time.
+os.environ.setdefault("DSPY_CACHEDIR", "cache/dspy")
+
+import dspy
 
 
 # ---------------------------------------------------------------------------
@@ -71,8 +83,22 @@ def collect_and_dedupe(
     output_path: Path,
     model: str,
     experiments_arg: str | None,
+    pool: str = "both_keep",
 ) -> list[dict]:
-    """Collect both-KEEP rows from final_filter experiments and deduplicate."""
+    """Collect rows from final_filter experiments and deduplicate.
+
+    pool:
+      - "both_keep": chitchat_keep AND category_keep (positives). The global
+        chitchat-keep veto is applied: any user_input with chitchat_keep=false
+        in at least one measure is dropped entirely, enforcing the chitchat
+        domain gate.
+      - "xor":       exactly one of chitchat_keep / category_keep (negatives).
+        No chitchat veto — by definition XOR includes chitchat_keep=false rows,
+        and applying a global veto would zero out half of the XOR pool.
+    """
+    if pool not in {"both_keep", "xor"}:
+        raise ValueError(f"pool must be 'both_keep' or 'xor', got {pool!r}")
+    apply_veto = pool == "both_keep"
     if experiments_arg:
         measures = []
         for entry in experiments_arg.split(","):
@@ -88,29 +114,33 @@ def collect_and_dedupe(
         print(f"  {exp_num}_final_filter -> {measure}")
     print()
 
-    # Pass 1: build the global chitchat-keep veto set.
+    # Pass 1: build the global chitchat-keep veto set (both_keep mode only).
     # If any measure's judge returned chitchat_keep=false for a user_input,
     # that user_input is dropped from ALL measures, since chitchat_keep is a
     # measure-independent property of the conversation. Errors are NOT vetoes.
+    # Skipped in xor mode: XOR includes chitchat_keep=false by design.
     vetoed: set[str] = set()
-    for exp_num, measure in measures:
-        result_path = (
-            experiments_dir
-            / f"{exp_num}_final_filter"
-            / "results"
-            / f"{measure}_final.jsonl"
-        )
-        if not result_path.exists():
-            continue
-        with open(result_path) as f_in:
-            for line in f_in:
-                row = json.loads(line)
-                resp = row.get("model_responses", {}).get(model, {})
-                if "error" in resp:
-                    continue
-                if resp.get("chitchat_keep") is False:
-                    vetoed.add(row["user_input"])
-    print(f"Veto set: {len(vetoed)} user_inputs with chitchat_keep=false in at least one measure\n")
+    if apply_veto:
+        for exp_num, measure in measures:
+            result_path = (
+                experiments_dir
+                / f"{exp_num}_final_filter"
+                / "results"
+                / f"{measure}_final.jsonl"
+            )
+            if not result_path.exists():
+                continue
+            with open(result_path) as f_in:
+                for line in f_in:
+                    row = json.loads(line)
+                    resp = row.get("model_responses", {}).get(model, {})
+                    if "error" in resp:
+                        continue
+                    if resp.get("chitchat_keep") is False:
+                        vetoed.add(row["user_input"])
+        print(f"Veto set: {len(vetoed)} user_inputs with chitchat_keep=false in at least one measure\n")
+    else:
+        print("Chitchat veto: skipped (pool=xor)\n")
 
     total = 0
     kept_before_dedup = 0
@@ -143,7 +173,13 @@ def collect_and_dedupe(
                 if "error" in resp:
                     errors += 1
                     continue
-                if resp.get("chitchat_keep") and resp.get("category_keep"):
+                ck = resp.get("chitchat_keep")
+                catk = resp.get("category_keep")
+                if pool == "both_keep":
+                    passes = bool(ck) and bool(catk)
+                else:  # "xor"
+                    passes = bool(ck) != bool(catk)
+                if passes:
                     kept_before_dedup += 1
                     measure_kept += 1
                     ui = row["user_input"]
@@ -166,10 +202,11 @@ def collect_and_dedupe(
             f_out.write(json.dumps(row) + "\n")
 
     multi = sum(1 for r in rows if len(r["measure"]) > 1)
+    label = "Both KEEP" if pool == "both_keep" else "XOR KEEP"
     print(f"\nTotal rows scanned: {total}")
     print(f"Errors: {errors}")
     print(f"Dropped by chitchat veto: {dropped_by_veto}")
-    print(f"Both KEEP (before dedup): {kept_before_dedup}")
+    print(f"{label} (before dedup): {kept_before_dedup}")
     print(f"After dedup: {len(rows)} unique conversations")
     print(f"  Single-measure: {len(rows) - multi}")
     print(f"  Multi-measure:  {multi}")
@@ -207,26 +244,31 @@ Respond with ONLY a JSON object:
 
 
 def classify_with_llm(
-    client: openai.OpenAI,
+    lm: dspy.LM,
     user_input: str,
-    model: str = "anthropic/claude-opus-4-6",
     max_retries: int = 5,
 ) -> tuple[str, str]:
-    """Use Opus to classify a user_input. Returns (classification, reasoning)."""
+    """Use Opus (via DSPy + disk cache) to classify a user_input.
+
+    Returns (classification, reasoning). DSPy caches successful responses to
+    cache/dspy/, so re-running with the same user_input is free.
+    """
+    messages = [
+        {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT},
+        {"role": "user", "content": user_input[:8000]},
+    ]
+    raw = ""
     for attempt in range(max_retries):
         try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": CLASSIFY_SYSTEM_PROMPT},
-                    {"role": "user", "content": user_input[:8000]},
-                ],
-                max_tokens=256,
-                temperature=0,
-            )
-            raw = response.choices[0].message.content.strip()
+            response = lm(messages=messages)
+            if not response or not response[0]:
+                raise ValueError("empty response")
+            raw = response[0]
+            if isinstance(raw, dict):
+                raw = raw.get("content", "") or raw.get("text", "") or str(raw)
+            raw = raw.strip()
             break
-        except (openai.RateLimitError, openai.APITimeoutError, openai.APIConnectionError) as e:
+        except Exception as e:
             wait = 2 ** attempt
             print(f"    Retry {attempt+1}/{max_retries} after {type(e).__name__}, waiting {wait}s...", flush=True)
             time.sleep(wait)
@@ -252,9 +294,14 @@ def split_turns(rows: list[dict], combined_path: Path, key_path: Path) -> None:
     stem = combined_path.stem
 
     api_key = Path(key_path).read_text().strip()
-    client = openai.OpenAI(
+    lm = dspy.LM(
+        model="openrouter/anthropic/claude-opus-4-6",
         api_key=api_key,
-        base_url="https://openrouter.ai/api/v1",
+        api_base="https://openrouter.ai/api/v1",
+        max_tokens=256,
+        temperature=0,
+        cache=True,
+        timeout=120,
     )
 
     # Resume from existing report if present
@@ -280,7 +327,7 @@ def split_turns(rows: list[dict], combined_path: Path, key_path: Path) -> None:
             reasoning = cached_details[preview]["reasoning"]
             tag = "cached"
         else:
-            classification, reasoning = classify_with_llm(client, user_input)
+            classification, reasoning = classify_with_llm(lm, user_input)
             tag = "new"
 
         details.append({
@@ -476,7 +523,7 @@ def main():
     parser.add_argument(
         "--experiments", type=str, default=None,
         help="Comma-separated list of experiment_num:measure pairs to use "
-             "(e.g. '19:1B_human_disfluencies,20:1C_identity_transparency'). "
+             "(e.g. '19:1B_intentional_human_speech,20:1C_identity_transparency'). "
              "If not provided, auto-discovers all final_filter experiments.",
     )
     parser.add_argument(
@@ -486,6 +533,14 @@ def main():
     parser.add_argument(
         "--no_split", action="store_true",
         help="Skip Phase 2 (single/multi-turn splitting); only collect & deduplicate.",
+    )
+    parser.add_argument(
+        "--pool", type=str, default="both_keep", choices=["both_keep", "xor"],
+        help="Which Stage 4 rows to collect. 'both_keep' = chitchat_keep AND "
+             "category_keep (positives, default; chitchat veto applied). "
+             "'xor' = exactly one of the two (negatives, used as synthetic-"
+             "generation few-shot negatives; chitchat veto skipped since XOR "
+             "includes chitchat_keep=false by definition).",
     )
     parser.add_argument(
         "--dedupe_threshold", type=float, default=0.85,
@@ -506,6 +561,7 @@ def main():
         output_path=output_path,
         model=args.model,
         experiments_arg=args.experiments,
+        pool=args.pool,
     )
 
     if args.no_split:

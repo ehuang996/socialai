@@ -39,7 +39,9 @@ def main():
 
     measures = sorted(
         p.name for p in MEASURE_DIR.iterdir()
-        if p.is_dir() and not p.name.startswith("_") and p.name != "base"
+        if p.is_dir()
+        and not p.name.startswith("_")
+        and p.name not in ("base", "obsolete")
     )
 
     out = []

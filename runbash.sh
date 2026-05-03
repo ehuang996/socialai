@@ -4,7 +4,7 @@ echo ""
 printf "%-35s %6s %6s %6s %6s\n" "Measure" "S1" "S2" "S3" "S4"
 printf "%-35s %6s %6s %6s %6s\n" "---" "---" "---" "---" "---"
 
-for m in 1B_human_disfluencies 1B_human_pronoun 1C_identity_transparency 2A_fabricated_personal_details 2B_explicit_emotions 2B_implicit_emotions 2B_romantic_bonding 2C_sycophancy 2D_human_relationship_encouragement 3A_engagement_hooks; do
+for m in 1B_intentional_human_speech 1B_human_pronoun 1C_identity_transparency 2A_fabricated_personal_details 2B_explicit_emotions 2B_implicit_emotions 2B_romantic_bonding 2C_sycophancy 2D_human_relationship_encouragement 3A_engagement_hooks; do
     ROOT="/project2/robinjia_875/ehuang97/socialai/experiments/verify/verify_${m}/results"
     
     s2=$(python3 -c "import json; print(sum(1 for l in open('${ROOT}/${m}_scores.jsonl') if json.loads(l).get('keep')))" 2>/dev/null || echo "0")

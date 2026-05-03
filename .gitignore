@@ -22,6 +22,8 @@ cache/
 slurm_logs/
 wandb/
 logs/
+outputbash
+src/filter/parallel/state.json
 
 # Experiment outputs (results/logs/figures/src snapshots inside experiment folders)
 experiments/*/results/
@@ -47,6 +49,9 @@ data/
 *api_key*
 *openrouter_key*
 *.key
+.keys.json
+.deepseek_key
+.anthropic_key
 
 # Claude code
 .claude/

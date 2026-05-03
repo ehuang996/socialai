@@ -1,9 +1,14 @@
-"""Download WildChat-1M from HuggingFace, filter English, deduplicate, and save to JSONL.
+"""Download WildChat from HuggingFace, filter English, deduplicate, and save to JSONL.
 
-Run once (no SLURM array) before running the chit-chat filter:
-    sbatch experiments/01_chit_chat_filter/run_download.sbatch
+Default dataset is `allenai/WildChat-4.8M` (the public, non-gated release — ~3.2M
+conversations). The full 4.8M version lives in the request-only repo
+`allenai/WildChat-4.8M-Full` and is not used here. The legacy `allenai/WildChat-1M`
+is also supported via --dataset_name.
+
+Run once (no SLURM array) via:
+    sbatch slurm/run_download.sbatch
 Or directly:
-    uv run python experiments/01_chit_chat_filter/download.py --output_path data/wildchat_raw.jsonl
+    uv run python scripts/download.py --output_path data/wildchat_raw.jsonl
 """
 import argparse
 import json
@@ -14,9 +19,9 @@ HF_CACHE = "/project2/robinjia_875/wangzhu/eric_huang/.cache/huggingface"
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Download and preprocess WildChat-1M to JSONL.")
+    parser = argparse.ArgumentParser(description="Download and preprocess WildChat to JSONL.")
     parser.add_argument("--output_path", type=str, default="data/wildchat_raw.jsonl")
-    parser.add_argument("--dataset_name", type=str, default="allenai/WildChat-1M")
+    parser.add_argument("--dataset_name", type=str, default="allenai/WildChat-4.8M")
     parser.add_argument("--hf_cache", type=str, default=HF_CACHE)
     args = parser.parse_args()
 
