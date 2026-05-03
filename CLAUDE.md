@@ -28,10 +28,17 @@ synthetic generation):
 | **2x** | Fabrication, emotional expression, sycophancy, relationship encouragement | `2A_fabricated_personal_information`, `2B_emotion_expression`, `2C_deference`, `2C_flattery_tone`, `2D_human_relationship_encouragement` |
 | **3x** | Engagement | `3A_engagement_hooks` |
 
-Authoritative seedset of confirmed-positive examples per measure lives at
-`data/new_seedset.jsonl` (322 rows, schema
-`{user_input, measure, synthetic, language}`). It is consumed by Stage 6
-synthetic generation as the few-shot anchor pool.
+Authoritative in-the-wild seedset files:
+- `data/seedset_raw.jsonl` — 322 rows, 368 original tags; copied locally
+  from the manually consolidated jessetho mirror file
+  `data/new_seedset.jsonl`.
+- `data/seedset_data.jsonl` — same 322 rows after the Stage 6 union
+  relabel pass, 960 tags. This is the in-the-wild portion of
+  `data/final_dataset.jsonl`.
+
+The active Stage 7 input is `data/final_dataset.jsonl`: 969 rows
+(322 in-the-wild + 647 manually accepted synthetic), 3,147 total tags,
+schema `{user_input, measure, synthetic, language}`.
 
 ### Install dependencies
 ```
@@ -137,35 +144,51 @@ Re-evaluates only the intersection rows (both `chitchat_keep=true` AND `category
 
 After running Stages 1-4 for all measures, collect, dedupe, and augment with synthetic data.
 
-**Stage 5 — Data Preprocessing (CPU + OpenRouter API):**
+**Stage 5 — Data Preprocessing + Seedset Consolidation (CPU + OpenRouter API):**
 ```bash
-uv run python src/data_preprocessing/data_preprocessing.py \
-    --output data/final.jsonl \
+uv run python src/data_preprocessing/data_preprocessing_v2.py \
+    --output data/final_v2.jsonl \
     --key <path/to/openrouter_api_key>
 ```
-Three phases in one script:
-1. **Collect & deduplicate** — reads all `experiments/<NN>_final_filter/results/` directories, keeps rows where Opus returned both `chitchat_keep=true` AND `category_keep=true`, and deduplicates by `user_input`. Conversations appearing in multiple measures get a single row with `measure` as a list (e.g., `["1B_intentional_human_speech", "2C_flattery_tone"]`). **Global chitchat veto:** if a `user_input` has `chitchat_keep=false` from *any* measure's judge, it is dropped from the entire output (even if other measures returned both keeps true), since `chitchat_keep` is a measure-independent property of the conversation. Errors are skipped, not treated as vetoes. See [misc/design.md](misc/design.md) for details.
-2. **Split single/multi-turn** — uses Claude Opus 4.6 via OpenRouter to classify each `user_input` and write `single_turn_final.jsonl` (437 rows pre-dedup, 408 post-semantic-dedup), `multi_turn_final.jsonl` (518 rows), and a `split_report_*.json`. Resumable via the report file. Use `--no_split` to skip this phase.
-3. **Data cleaning** — semantic dedup of the single-turn file only, using `sentence-transformers/all-MiniLM-L6-v2` + cosine similarity (threshold `0.85`, tunable via `--dedupe_threshold`). Dropped rows are logged to `dedup_report_*.json`. Multi-turn is left untouched. Then every row in all three output files is tagged with `synthetic: false` and `language: "English"` to prepare the schema for later synthetic-data mixing. Adds `sentence-transformers` as a dependency (installed via `uv sync`).
+`data_preprocessing_v2.py` records the current v2 preprocessing procedure:
+it reads a curated cross-repo source list, keeps Stage 4 both-KEEP rows,
+deduplicates by `user_input`, and batch-classifies single vs multi-turn
+messages with Opus 4.6. The direct v2 output was then manually
+consolidated in the jessetho mirror into `data/new_seedset.jsonl`, copied
+locally as `data/seedset_raw.jsonl`.
+
+Current authoritative Stage 5 artifacts:
+- `data/seedset_raw.jsonl` — 322 in-the-wild rows, 368 original tags.
+- `data/seedset_data.jsonl` — same 322 rows after union relabel, 960 tags.
+
+Legacy `data_preprocessing.py`, `data/final.jsonl`,
+`single_turn_final*.jsonl`, and `multi_turn_final.jsonl` describe an older
+single/multi-turn pipeline and are not the active Stage 7 input.
 
 **Stage 6 — Synthetic Generation (OpenRouter API, Opus 4.6 rewriter):**
 Rewrite "near-miss" user inputs (rows that fell out at Stages 3-4) into
 on-target candidates, anchored to the confirmed-positive seedset
-(`data/new_seedset.jsonl`) as the few-shot exemplar pool. Each near-miss
+(`data/seedset_raw.jsonl` / mirror `data/new_seedset.jsonl`) as the few-shot exemplar pool. Each near-miss
 is rewritten under multiple `(round_idx, candidate_idx)` settings, the
 candidate response is naturalness-ranked, and the highest-ranked
-rewrites are kept. See `scripts/rebuild_near_misses_v2.py` and
-`scripts/run_stage6_452.sh` for the current implementation.
+rewrites are kept. See `scripts/rebuild_near_misses.py`,
+`scripts/rebuild_near_misses_v2.py`, `src/synthetic_generation/generate.py`,
+and `scripts/filter_synthetic_by_similarity.py` for the current
+implementation.
 
 Output: `data/synthetic_data_full.jsonl` (raw rewrites; 1,722 rows in
 the current run). A cosine-similarity filter on `(user_input,
 source_input)` ≥ 0.75 narrows this to `data/synthetic_data.jsonl` (684
-rows). Optionally followed by a re-judge pass that expands each row's
-`measure` field into the full union of behaviours the rewrite triggers
+rows). The union relabel pass scores both seedset and synthetic rows
+across all 9 measures using three responder models plus Opus 4.6 as judge
 (see [`misc/relabel_synthetic.md`](misc/relabel_synthetic.md)). The
-combined seedset + manually accepted relabelled synthetic dataset is written to
-`data/final_dataset.jsonl` (969 rows;
-`{user_input, measure, synthetic, language}`).
+manual pass accepts 647 of the 684 relabelled synthetic rows and edits 14
+accepted prompts, so the final synthetic inputs are derived from but not an
+exact `user_input` subset of `data/synthetic_data_relabelled.jsonl`.
+
+Final Stage 6 output and Stage 7 input:
+`data/final_dataset.jsonl` — 969 rows, 3,147 tags, schema
+`{user_input, measure, synthetic, language}`.
 
 ### Phase 3: Evaluation & Analysis
 
@@ -240,7 +263,8 @@ Reads `data/eval_judge_results.jsonl` and produces figures + summary tables in `
     - `single_turn.py` — `format_single_turn(row)` for WildChat single-turn analysis
     - `multi_turn.py` — stub for future multi-turn support
 - `src/data_preprocessing/` — Stage 5: data preprocessing (collect, dedupe, split)
-  - `data_preprocessing.py` — Phase 1: collect both-KEEP rows from final_filter experiments, dedupe by `user_input`, merge measures into a list. Phase 2: classify each row as single-turn vs multi-turn via Opus 4.6 and write split files + report. `--no_split` skips Phase 2.
+  - `data_preprocessing_v2.py` — current v2 preprocessing record: curated cross-repo source list, both-KEEP collection, dedupe, and batched single/multi classification before manual seedset consolidation.
+  - `data_preprocessing.py` — legacy v1 preprocessing script; useful as reference, but not the source of the current `final_dataset.jsonl`.
   - `intersect.py` — standalone utility to find intersection of `chitchat_keep` + `category_keep` from Stage 3 output
 - `src/evaluation/` — Stage 7 evaluation pipeline (all substages):
   - `_eval_common.py` — shared constants (canonical 9 measures), judge-prompt loader, judge-output parser, `.keys.json` loader. Imported by every other file in this folder.
@@ -250,7 +274,7 @@ Reads `data/eval_judge_results.jsonl` and produces figures + summary tables in `
   - `judge_responses.py` — Stage 7.2: Opus-4.6 NT judges every (`user_input`, `model_col`, labelled `measure`) triple. Model columns discovered dynamically from the input file. Default input: `data/eval_responses.jsonl`.
   - `sort_results.py` — sort judge results by input → measure → model family/recency.
   - `analyze_results.py` — Stage 7.3: figures and summary tables from judge results.
-  - `score_seedset.py` — one-shot scorer for `data/new_seedset.jsonl` (3-model × 9-measure judging). Shares helpers with the Stage 7 pipeline via `_eval_common`.
+  - `score_seedset.py` — one-shot scorer for the raw seedset (defaults to the mirror filename `data/new_seedset.jsonl`; use `--input data/seedset_raw.jsonl` locally). Shares helpers with the Stage 7 pipeline via `_eval_common`.
 - `scripts/` — one-off Python scripts and stage launchers:
   - `download.py` — Stage 0: WildChat downloader.
   - `rebuild_near_misses_v2.py` — Stage 6: synthetic-generation pipeline (rewrite + naturalness rank).
@@ -262,10 +286,9 @@ Reads `data/eval_judge_results.jsonl` and produces figures + summary tables in `
   - Each folder contains `figures/`, `logs/`, `results/`, and an `src/` snapshot (shard 0 only)
 - `data/` — datasets (gitignored)
   - `wildchat_raw.jsonl` — downloaded WildChat data (Stage 0)
-  - `final.jsonl` — deduplicated final dataset (Stage 5 output)
-  - `single_turn_final.jsonl` — single-turn subset (auto-split by Stage 5)
-  - `single_turn_final_manual.jsonl` — single-turn subset after manual curation (legacy Stage 7 input; Stage 7.1 now reads `final_dataset.jsonl` directly)
-  - `multi_turn_final.jsonl` — multi-turn subset (not currently used in Stage 7)
+  - `seedset_raw.jsonl` — current raw in-the-wild seedset, 322 rows / 368 original tags.
+  - `seedset_data.jsonl` — relabelled in-the-wild seedset, 322 rows / 960 tags.
+  - `near_misses.jsonl` — Stage 6 rewrite source pool, 11,520 rows.
   - `synthetic_data_full.jsonl`, `synthetic_data.jsonl`, `synthetic_data_relabelled.jsonl` — Stage 6 synthetic generation outputs (raw, cos-sim filtered, and union-relabelled).
   - `final_dataset.jsonl` — Stage 6 final output and **Stage 7.1 input**: seedset + manual-pass synthetic, 969 rows, schema `{user_input, measure, synthetic, language}`.
   - `eval_responses.jsonl` — Stage 7.1 output: 25-model responses per `user_input` after the local-Qwen merge.
@@ -282,6 +305,16 @@ Reads `data/eval_judge_results.jsonl` and produces figures + summary tables in `
 - Reusable code goes in `src/` with argparse for flexibility.
 - Tracking: wandb (disable with `WANDB_MODE=disabled`)
 - **Data format:** After Stage 5, `measure` is always a list (e.g., `["2C_flattery_tone"]` or `["1B_intentional_human_speech", "3A_engagement_hooks"]`). Conversations are deduplicated by `user_input` — a conversation flagged for multiple categories appears once with all measures listed.
+
+## Paper Drafting Notes
+
+The paper repo under `paper/` is currently outdated relative to the data
+pipeline. For rewriting Section 3 (`paper/03_dataset.tex`), treat
+`misc/data_summary.md` and `misc/data_results.md` as the source of truth.
+`misc/section3_rewrite_system_prompt.md` contains the browser-model prompt
+for that rewrite. Do not copy dataset counts or model-result claims from
+the current abstract, results, or discussion until those sections are
+refreshed.
 
 ## Programming Philosophy
 
