@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Multi-Turn Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --bg:#f4f3ee; --panel:#fdfdfb; --ink:#1e2128; --muted:#6d7280; --line:#dcdad3; --line-strong:#c6c3b9;
+  --accent:#3b6ea5; --accent-soft:#e6eef8;
+  --trigger-bg:#fff1c9; --trigger-ink:#7a4d00; --trigger-line:#e9c56a;
+  --accept:#1f7a5a; --accept-soft:#dff3ea; --reject:#b23a2c; --reject-soft:#f9e3df;
+  --dim:#a0a4ad; --user-bg:#f0efe9; --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --sans:"Source Sans 3",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#15171b; --panel:#1e2126; --ink:#e7e5df; --muted:#9ba1ab; --line:#30343b; --line-strong:#454a53;
+  --accent:#8db4e2; --accent-soft:#243447; --trigger-bg:#3a2d0c; --trigger-ink:#f1c65b; --trigger-line:#7a5f1a;
+  --accept:#5ccf9a; --accept-soft:#1c3a2d; --reject:#f08a7c; --reject-soft:#42211c; --dim:#6c717b; --user-bg:#24272d;
+}}
+:root[data-theme="dark"]{
+  --bg:#15171b; --panel:#1e2126; --ink:#e7e5df; --muted:#9ba1ab; --line:#30343b; --line-strong:#454a53;
+  --accent:#8db4e2; --accent-soft:#243447; --trigger-bg:#3a2d0c; --trigger-ink:#f1c65b; --trigger-line:#7a5f1a;
+  --accept:#5ccf9a; --accept-soft:#1c3a2d; --reject:#f08a7c; --reject-soft:#42211c; --dim:#6c717b; --user-bg:#24272d;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.5}
+button,select,input,textarea{font:inherit;color:inherit}
+a{color:var(--accent)}
+.mono{font-family:var(--mono);font-size:12.5px;letter-spacing:0}
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--panel);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center}
+header h1{font-size:17px;font-weight:700;margin:0;letter-spacing:.01em}
+.progress{display:flex;align-items:center;gap:8px;color:var(--muted);font-variant-numeric:tabular-nums}
+.bar{width:140px;height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accept);width:0}
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-left:auto}
+select,input[type=search]{background:var(--bg);border:1px solid var(--line-strong);border-radius:6px;padding:5px 8px;font-size:14px}
+.btn{background:var(--panel);border:1px solid var(--line-strong);border-radius:6px;padding:5px 10px;font-size:14px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+main{display:grid;grid-template-columns:330px minmax(0,1fr);height:calc(100% - 58px)}
+@media (max-width:820px){ main{grid-template-columns:1fr;height:auto} aside{max-height:38vh} }
+aside{border-right:1px solid var(--line);overflow-y:auto;background:var(--panel)}
+.item{display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:10px 14px;border-bottom:1px solid var(--line);cursor:pointer}
+.item:hover{background:var(--bg)}
+.item.active{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.item .h{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.item .m{display:flex;flex-wrap:wrap;gap:4px;grid-column:1/-1}
+.chip{font-size:11.5px;padding:1px 7px;border-radius:999px;border:1px solid var(--line-strong);color:var(--muted);white-space:nowrap}
+.chip.t{border-color:var(--trigger-line);background:var(--trigger-bg);color:var(--trigger-ink)}
+.dots{display:flex;gap:3px;align-items:center}
+.dot{width:9px;height:9px;border-radius:50%;border:1px solid var(--line-strong)}
+.dot.accept{background:var(--accept);border-color:var(--accept)} .dot.reject{background:var(--reject);border-color:var(--reject)}
+section{overflow-y:auto;padding:18px 20px 60px}
+@media (max-width:820px){ section{padding:14px 16px 60px} }
+.conv-head{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;color:var(--muted);margin-bottom:14px}
+.conv-head b{color:var(--ink)}
+.turn{display:grid;grid-template-columns:78px minmax(0,1fr);gap:10px;padding:10px 0;border-top:1px solid var(--line);max-width:82ch}
+.turn .who{font-family:var(--mono);font-size:12px;color:var(--muted);padding-top:3px}
+.turn .txt{white-space:pre-wrap;overflow-wrap:anywhere}
+.turn.user .txt{background:var(--user-bg);padding:8px 10px;border-radius:6px}
+.turn.trigger .txt{background:var(--trigger-bg);color:var(--trigger-ink);border:1px solid var(--trigger-line);padding:8px 10px;border-radius:6px}
+.turn.trigger .who{color:var(--trigger-ink);font-weight:600}
+.turn.after{opacity:.55}
+.turn.after .who::after{content:" · after trigger, not in dataset";font-weight:400}
+.labels{margin-top:22px;display:grid;gap:14px;max-width:82ch}
+.label{border:1px solid var(--line);border-radius:8px;background:var(--panel);padding:12px 14px}
+.label.accept{border-color:var(--accept);background:var(--accept-soft)}
+.label.reject{border-color:var(--reject);background:var(--reject-soft)}
+.label .top{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin-bottom:8px}
+.label .top b{font-size:15px}
+.label .btns{margin-left:auto;display:flex;gap:6px}
+.btn.a{border-color:var(--accept);color:var(--accept)} .btn.r{border-color:var(--reject);color:var(--reject)}
+.label.accept .btn.a,.label.reject .btn.r{color:#fff;background:var(--accept)} .label.reject .btn.r{background:var(--reject)}
+.reason{font-size:14px;color:var(--ink);margin:4px 0}
+.reason .k{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-right:6px;text-transform:uppercase;letter-spacing:.04em}
+details{margin-top:6px} summary{cursor:pointer;color:var(--muted);font-size:13.5px}
+.note{margin-top:18px;max-width:82ch}
+.note textarea{width:100%;min-height:64px;background:var(--panel);border:1px solid var(--line-strong);border-radius:6px;padding:8px 10px}
+.hint{color:var(--muted);font-size:13px;margin-top:10px}
+kbd{font-family:var(--mono);font-size:11.5px;border:1px solid var(--line-strong);border-bottom-width:2px;border-radius:4px;padding:0 5px;background:var(--panel)}
+.empty{color:var(--muted);padding:40px 0}
+#io{display:none}
+</style>
+</head>
+<body>
+<header>
+  <h1>Multi-Turn Review</h1>
+  <div class="progress"><span id="done">0</span>/<span id="total">0</span> labels decided <span class="bar"><i id="barfill"></i></span></div>
+  <div class="controls">
+    <select id="f_measure"><option value="">All measures</option></select>
+    <select id="f_turn"><option value="">Any trigger turn</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
+    <select id="f_status"><option value="">All</option><option value="undecided">Undecided</option><option value="accept">Accepted</option><option value="reject">Rejected</option></select>
+    <input type="search" id="f_q" placeholder="search text or hash">
+    <button class="btn" id="export">Export decisions</button>
+    <button class="btn" id="import">Import</button>
+    <input type="file" id="io" accept="application/json">
+  </div>
+</header>
+<div id="exportbox" hidden style="padding:12px 16px;border-bottom:1px solid var(--line);background:var(--panel)">
+  <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>Decisions JSON</b><span id="copied" class="hint" style="margin:0"></span>
+    <button class="btn" id="closeexport" style="margin-left:auto">Close</button></div>
+  <textarea id="exporttext" readonly style="width:100%;height:140px;margin-top:8px;font-family:var(--mono);font-size:12px;background:var(--bg);border:1px solid var(--line-strong);border-radius:6px;padding:8px"></textarea>
+  <div class="hint">Save this as <code>review_decisions.json</code>, then: <code>python -m src.multi_turn_experiment.dataset.apply_review --decisions review_decisions.json</code></div>
+</div>
+<main>
+  <aside id="list"></aside>
+  <section id="view"><div class="empty">Loading…</div></section>
+</main>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+const DATA = JSON.parse(document.getElementById('data').textContent);
+const SHORT = {"1B_intentional_human_speech":"1B Speech","1B_human_pronoun":"1B Pronoun","1C_identity_transparency":"1C Identity","2A_fabricated_personal_information":"2A Fabrication","2B_emotion_expression":"2B Emotion","2C_deference":"2C Deference","2C_flattery_tone":"2C Flattery","2D_human_relationship_encouragement":"2D Relationship","3A_engagement_hooks":"3A Engagement"};
+const KEY = 'mt_review_v1';
+let state = {decisions:{}, notes:{}};
+try { const s = localStorage.getItem(KEY); if (s) state = JSON.parse(s); } catch (e) {}
+function save(){ try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+const dkey = (h, m) => h + '|' + m;
+let filtered = DATA.slice(), current = 0;
+
+const fm = document.getElementById('f_measure');
+Object.keys(SHORT).forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = SHORT[m]; fm.appendChild(o); });
+document.getElementById('total').textContent = DATA.reduce((n, c) => n + c.labels.length, 0);
+
+function esc(s){ return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function decisionOf(c, m){ return (state.decisions[dkey(c.hash, m)] || {}).decision || ''; }
+
+function applyFilters(){
+  const m = fm.value, t = document.getElementById('f_turn').value, st = document.getElementById('f_status').value,
+        q = document.getElementById('f_q').value.trim().toLowerCase();
+  filtered = DATA.filter(c => {
+    if (m && !c.measures.includes(m)) return false;
+    if (t && !Object.values(c.trigger_turns).some(n => String(n) === t)) return false;
+    if (st) { const ds = c.measures.map(mm => decisionOf(c, mm) || 'undecided'); if (!ds.includes(st)) return false; }
+    if (q && !(c.hash.startsWith(q) || c.conversation.some(x => x.content.toLowerCase().includes(q)))) return false;
+    return true;
+  });
+  current = Math.min(current, Math.max(0, filtered.length - 1));
+  renderList(); renderView();
+}
+
+function renderList(){
+  const el = document.getElementById('list'); el.innerHTML = '';
+  filtered.forEach((c, i) => {
+    const d = document.createElement('div'); d.className = 'item' + (i === current ? ' active' : ''); d.dataset.i = i;
+    d.innerHTML = `<span class="h">${c.hash.slice(0,10)} · ${c.turns}t</span>
+      <span class="dots">${c.measures.map(m => `<span class="dot ${decisionOf(c,m)}" title="${SHORT[m]}"></span>`).join('')}</span>
+      <span class="m">${c.measures.map(m => `<span class="chip t">${SHORT[m]} @${c.trigger_turns[m]}</span>`).join('')}</span>`;
+    d.onclick = () => { current = i; renderList(); renderView(); };
+    el.appendChild(d);
+  });
+  const active = el.querySelector('.item.active'); if (active) active.scrollIntoView({block:'nearest'});
+  updateProgress();
+}
+
+function updateProgress(){
+  const done = DATA.reduce((n, c) => n + c.measures.filter(m => decisionOf(c, m)).length, 0);
+  const total = Number(document.getElementById('total').textContent);
+  document.getElementById('done').textContent = done;
+  document.getElementById('barfill').style.width = (100 * done / total) + '%';
+}
+
+function renderView(){
+  const v = document.getElementById('view');
+  if (!filtered.length) { v.innerHTML = '<div class="empty">No conversations match the filters.</div>'; return; }
+  const c = filtered[current];
+  const maxTrigger = Math.max(...Object.values(c.trigger_turns));
+  const trigSet = {}; c.measures.forEach(m => { (trigSet[c.trigger_turns[m]] ||= []).push(m); });
+  let html = `<div class="conv-head"><span class="mono">${c.hash}</span><span>${esc(c.model)}</span><span>${esc(c.timestamp)}</span>
+    <span><b>${c.turns}</b> turns</span><span>${current + 1} / ${filtered.length}</span></div>`;
+  c.conversation.forEach((msg, i) => {
+    const k = Math.floor(i / 2) + 1, isUser = msg.role === 'user';
+    const trig = !isUser && trigSet[k], after = k > maxTrigger;
+    html += `<div class="turn ${isUser ? 'user' : 'asst'}${trig ? ' trigger' : ''}${after ? ' after' : ''}">
+      <div class="who">turn ${k}<br>${isUser ? 'USER' : 'ASSISTANT'}${trig ? '<br>' + trig.map(m => SHORT[m]).join(', ') : ''}</div>
+      <div class="txt">${esc(msg.content)}</div></div>`;
+  });
+  html += '<div class="labels">' + c.labels.map(l => {
+    const d = decisionOf(c, l.measure);
+    const s2 = l.stage2 || {}, s3 = l.stage3 || {}, s4 = l.stage4 || {};
+    return `<div class="label ${d}" data-m="${l.measure}">
+      <div class="top"><b>${SHORT[l.measure]}</b><span class="chip t">trigger turn ${l.turn}</span>
+        <span class="btns"><button class="btn a" data-d="accept">Accept</button><button class="btn r" data-d="reject">Reject</button><button class="btn" data-d="">Clear</button></span></div>
+      <div class="reason"><span class="k">Opus · violation</span>${esc(s4.category_reasoning)}</div>
+      <div class="reason"><span class="k">Opus · chitchat</span>${esc(s4.chitchat_reasoning)}</div>
+      <details><summary>Earlier judges</summary>
+        <div class="reason"><span class="k">GPT-4o-mini · violation</span>${esc(s3.category_reasoning)}</div>
+        <div class="reason"><span class="k">GPT-4o-mini · chitchat</span>${esc(s3.chitchat_reasoning)}</div>
+        <div class="reason"><span class="k">Qwen3.7 Flash · rubric</span>${esc(s2.reasoning)}</div></details></div>`;
+  }).join('') + '</div>';
+  html += `<div class="note"><label for="note">Note (optional)</label><textarea id="note" placeholder="Why, or what to fix">${esc(state.notes[c.hash] || '')}</textarea></div>
+    <div class="hint"><kbd>j</kbd>/<kbd>k</kbd> next / previous · <kbd>a</kbd> accept all labels here · <kbd>r</kbd> reject all · <kbd>n</kbd> note · decisions autosave in this browser; Export to keep a copy.</div>`;
+  v.innerHTML = html; v.scrollTop = 0;
+  v.querySelectorAll('.label .btn').forEach(b => b.onclick = () => decide(c, b.closest('.label').dataset.m, b.dataset.d));
+  document.getElementById('note').oninput = e => { state.notes[c.hash] = e.target.value; save(); };
+}
+
+function decide(c, m, d){
+  if (d) state.decisions[dkey(c.hash, m)] = {decision: d, trigger_turn: c.trigger_turns[m], at: new Date().toISOString()};
+  else delete state.decisions[dkey(c.hash, m)];
+  save(); renderList(); renderView();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') { if (e.key === 'Escape') e.target.blur(); return; }
+  const c = filtered[current]; if (!c) return;
+  if (e.key === 'j') { current = Math.min(current + 1, filtered.length - 1); renderList(); renderView(); }
+  else if (e.key === 'k') { current = Math.max(current - 1, 0); renderList(); renderView(); }
+  else if (e.key === 'a' || e.key === 'r') { c.measures.forEach(m => { state.decisions[dkey(c.hash, m)] = {decision: e.key === 'a' ? 'accept' : 'reject', trigger_turn: c.trigger_turns[m], at: new Date().toISOString()}; }); save(); renderList(); renderView(); }
+  else if (e.key === 'n') { e.preventDefault(); document.getElementById('note').focus(); }
+});
+['f_measure','f_turn','f_status'].forEach(id => document.getElementById(id).onchange = applyFilters);
+document.getElementById('f_q').oninput = applyFilters;
+
+document.getElementById('export').onclick = () => {
+  const decisions = [];
+  DATA.forEach(c => c.measures.forEach(m => { const d = state.decisions[dkey(c.hash, m)]; if (d) decisions.push({conversation_hash: c.hash, measure: m, trigger_turn: c.trigger_turns[m], decision: d.decision, at: d.at, note: state.notes[c.hash] || ''}); }));
+  const text = JSON.stringify({exported_at: new Date().toISOString(), decisions}, null, 1);
+  try { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type: 'application/json'})); a.download = 'review_decisions.json'; a.click(); } catch (e) {}
+  // Some hosts block downloads; always also show the JSON so it can be copied.
+  const box = document.getElementById('exportbox'); box.hidden = false;
+  const ta = document.getElementById('exporttext'); ta.value = text; ta.focus(); ta.select();
+  try { navigator.clipboard.writeText(text).then(() => { document.getElementById('copied').textContent = 'Copied to clipboard.'; }); } catch (e) {}
+};
+document.getElementById('closeexport').onclick = () => { document.getElementById('exportbox').hidden = true; };
+document.getElementById('import').onclick = () => document.getElementById('io').click();
+document.getElementById('io').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  f.text().then(t => { const j = JSON.parse(t); (j.decisions || []).forEach(d => { state.decisions[dkey(d.conversation_hash, d.measure)] = {decision: d.decision, trigger_turn: d.trigger_turn, at: d.at}; if (d.note) state.notes[d.conversation_hash] = d.note; }); save(); applyFilters(); });
+};
+applyFilters();
+</script>
+</body>
+</html>
